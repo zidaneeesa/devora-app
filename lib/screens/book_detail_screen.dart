@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'book_reader_screen.dart';
+import 'ebook_web_reader_screen.dart';
 import '../../services/api_service.dart';
 
 class BookDetailScreen extends StatefulWidget {
@@ -61,6 +62,111 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
     return publisher.toString();
   }
 
+  String? _cleanUrl(dynamic value) {
+    if (value == null) return null;
+
+    final text = value.toString().trim();
+    if (text.isEmpty || text == 'null') return null;
+
+    return text;
+  }
+
+  int _asInt(dynamic value, {int fallback = 0}) {
+    if (value == null) return fallback;
+
+    if (value is int) return value;
+
+    if (value is double) return value.round();
+
+    final text = value.toString().trim();
+    if (text.isEmpty || text == 'null') return fallback;
+
+    return int.tryParse(text) ?? fallback;
+  }
+
+  int _getBestPageCount(Map<String, dynamic> source) {
+    final candidates = [
+      source['pages'],
+      source['page_count'],
+      source['pageCount'],
+      source['imagecount'],
+      source['total_page'],
+      source['total_pages'],
+    ];
+
+    for (final candidate in candidates) {
+      final value = _asInt(candidate);
+      if (value > 0) return value;
+    }
+
+    return 0;
+  }
+
+  bool _isValidPdfUrl(dynamic value) {
+    final url = _cleanUrl(value);
+    if (url == null) return false;
+
+    String decodedUrl = url;
+
+    try {
+      decodedUrl = Uri.decodeFull(url);
+    } catch (_) {}
+
+    final lower = decodedUrl.toLowerCase().trim();
+    final withoutQuery = lower.split('?').first;
+
+    if (!lower.startsWith('http')) return false;
+
+    // Harus PDF
+    if (!lower.contains('.pdf')) return false;
+
+    // Hindari file backup/history Internet Archive
+    if (lower.contains('/history/files/')) return false;
+    if (lower.contains('.pdf.~')) return false;
+    if (lower.endsWith('~')) return false;
+
+    // Pastikan path utama berakhir .pdf
+    if (!withoutQuery.endsWith('.pdf')) return false;
+
+    return true;
+  }
+
+  String? _pickValidPdfUrlFrom(dynamic source) {
+    if (source == null || source is! Map) return null;
+
+    // Prioritas pertama dari pdf_link
+    final directPdf = _cleanUrl(source['pdf_link']);
+    if (_isValidPdfUrl(directPdf)) {
+      return directPdf;
+    }
+
+    // Lalu cari dari formats
+    final formats = source['formats'];
+    if (formats != null && formats is Map) {
+      for (final entry in formats.entries) {
+        final key = entry.key.toString().toLowerCase();
+        final value = _cleanUrl(entry.value);
+
+        if (key.contains('pdf') && _isValidPdfUrl(value)) {
+          return value;
+        }
+      }
+    }
+
+    return null;
+  }
+
+  String? _pickWebReaderUrlFrom(dynamic source) {
+    if (source == null || source is! Map) return null;
+
+    final webReader = _cleanUrl(source['web_reader']);
+    if (webReader != null && webReader.startsWith('http')) {
+      return webReader;
+    }
+
+    return null;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -71,18 +177,62 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
     }
   }
 
-  void fetchProgress() async {
-    final res = await ApiService.getReadingProgress(
-      widget.book['id'].toString(),
-    );
+  int _readInt(dynamic value) {
+    if (value == null) return 0;
 
-    if (res['status'] == 200) {
-      setState(() {
-        currentPage = res['data']['current_page'] ?? 0;
-        totalPage = res['data']['total_page'] ?? 0;
+    if (value is int) return value;
 
-        progress = totalPage == 0 ? 0 : currentPage / totalPage;
-      });
+    return int.tryParse(value.toString()) ?? 0;
+  }
+
+  int _resolveTotalPages([dynamic detail]) {
+    final sources = [detail, widget.book];
+
+    for (final source in sources) {
+      if (source is Map) {
+        final keys = [
+          'pages',
+          'page_count',
+          'pageCount',
+          'imagecount',
+          'total_page',
+        ];
+
+        for (final key in keys) {
+          final value = _readInt(source[key]);
+          if (value > 0) return value;
+        }
+      }
+    }
+
+    if (totalPage > 0) return totalPage;
+
+    return 0;
+  }
+
+  Future<void> fetchProgress() async {
+    try {
+      final res = await ApiService.getReadingProgress(
+        widget.book['id'].toString(),
+      );
+
+      if (!mounted) return;
+
+      if (res['status'] == 200 && res['data'] != null) {
+        final int newCurrentPage =
+            int.tryParse('${res['data']['current_page'] ?? 0}') ?? 0;
+
+        final int newTotalPage =
+            int.tryParse('${res['data']['total_page'] ?? 0}') ?? 0;
+
+        setState(() {
+          currentPage = newCurrentPage;
+          totalPage = newTotalPage;
+          progress = newTotalPage == 0 ? 0 : newCurrentPage / newTotalPage;
+        });
+      }
+    } catch (e) {
+      debugPrint('Gagal mengambil progress: $e');
     }
   }
 
@@ -115,24 +265,6 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
             ),
           ),
         ),
-        actions: [
-          CircleAvatar(
-            backgroundColor: Colors.white,
-            child: IconButton(
-              icon: const Icon(Icons.favorite_border, color: Colors.black87),
-              onPressed: () {},
-            ),
-          ),
-          const SizedBox(width: 12),
-          CircleAvatar(
-            backgroundColor: Colors.white,
-            child: IconButton(
-              icon: const Icon(Icons.share, color: Colors.black87),
-              onPressed: () {},
-            ),
-          ),
-          const SizedBox(width: 16),
-        ],
       ),
       body: SingleChildScrollView(
         child: Column(
@@ -463,80 +595,145 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
                             padding: const EdgeInsets.only(left: 20.0),
                             child: ElevatedButton(
                               onPressed: () async {
-                                if (widget.isEbook) {
-                                  print(widget.book); // 🔥 debug
+                                if (!widget.isEbook) return;
 
-                                  String? url;
-                                  final id =
-                                      widget.book['id']?.toString() ?? "";
+                                final id = widget.book['id']?.toString() ?? '';
 
-                                  // ❌ FILTER: bukan archive valid
-                                  if (id.contains('http')) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
-                                        content: Text(
-                                          'Ebook tidak bisa dibuka (bukan PDF valid)',
-                                        ),
+                                if (id.isEmpty) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text('Data ebook tidak valid'),
+                                    ),
+                                  );
+                                  return;
+                                }
+
+                                if (id.contains('http')) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text('Ebook tidak bisa dibuka'),
+                                    ),
+                                  );
+                                  return;
+                                }
+
+                                if (id.toLowerCase().contains('mp3')) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text(
+                                        'Ini file audio, bukan ebook',
                                       ),
-                                    );
-                                    return;
-                                  }
+                                    ),
+                                  );
+                                  return;
+                                }
 
-                                  // ❌ FILTER: file audio
-                                  if (id.toLowerCase().contains('mp3')) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
-                                        content: Text(
-                                          'Ini file audio, bukan ebook PDF',
-                                        ),
-                                      ),
-                                    );
-                                    return;
-                                  }
+                                String? pdfUrl = _pickValidPdfUrlFrom(
+                                  widget.book,
+                                );
+                                String? webReaderUrl = _pickWebReaderUrlFrom(
+                                  widget.book,
+                                );
+                                Map<String, dynamic>? detail;
 
-                                  // ✅ coba dari formats dulu
-                                  final formats = widget.book['formats'];
-                                  if (formats != null && formats is Map) {
-                                    for (var entry in formats.entries) {
-                                      if (entry.key.toString().contains(
-                                        'pdf',
-                                      )) {
-                                        url = entry.value.toString();
-                                        break;
-                                      }
+                                try {
+                                  final source =
+                                      widget.book['source']?.toString() ??
+                                      'internet_archive';
+
+                                  final res = await ApiService.getEbookDetail(
+                                    id,
+                                    source: source,
+                                  );
+
+                                  if (res['status'] == 200 &&
+                                      res['data'] != null) {
+                                    detail = Map<String, dynamic>.from(
+                                      res['data'],
+                                    );
+
+                                    final detailPdf = _pickValidPdfUrlFrom(
+                                      detail,
+                                    );
+                                    final detailWebReader =
+                                        _pickWebReaderUrlFrom(detail);
+
+                                    if (detailPdf != null) {
+                                      pdfUrl = detailPdf;
+                                    }
+
+                                    if (detailWebReader != null) {
+                                      webReaderUrl = detailWebReader;
                                     }
                                   }
-
-                                  // ✅ fallback archive
-                                  if (url == null || url.isEmpty) {
-                                    final res = await ApiService.getEbookDetail(
-                                      id,
-                                    );
-                                    url = res['data']['pdf_link'];
-                                  }
-
-                                  print("FINAL URL: $url");
-
-                                  // validasi akhir
-                                  if (url != null && url.isNotEmpty) {
-                                    Navigator.push(
-                                      context,
-                                      MaterialPageRoute(
-                                        builder: (_) => BookReaderScreen(
-                                          url: url!,
-                                          title: widget.book['title'] ?? '',
-                                          ebookId: id,
-                                        ),
-                                      ),
-                                    );
-                                  } else {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
-                                        content: Text('PDF tidak tersedia'),
-                                      ),
-                                    );
-                                  }
+                                } catch (e) {
+                                  debugPrint(
+                                    'Gagal mengambil detail ebook: $e',
+                                  );
                                 }
+
+                                final int totalPages = _resolveTotalPages(
+                                  detail,
+                                );
+
+                                debugPrint('VALID PDF URL: $pdfUrl');
+                                debugPrint('WEB READER URL: $webReaderUrl');
+                                debugPrint('TOTAL PAGES: $totalPages');
+
+                                // Prioritas utama: Web Reader
+                                if (webReaderUrl != null &&
+                                    webReaderUrl.isNotEmpty) {
+                                  final result = await Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => EbookWebReaderScreen(
+                                        url: webReaderUrl!,
+                                        title: widget.book['title'] ?? '',
+                                        ebookId: id,
+                                        totalPages: totalPages,
+                                        pdfUrl: pdfUrl,
+                                      ),
+                                    ),
+                                  );
+
+                                  if (!mounted) return;
+
+                                  if (result == true) {
+                                    await fetchProgress();
+                                  } else {
+                                    await fetchProgress();
+                                  }
+
+                                  return;
+                                }
+
+                                // Fallback: PDF Reader
+                                if (pdfUrl != null && pdfUrl.isNotEmpty) {
+                                  await Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => BookReaderScreen(
+                                        url: pdfUrl!,
+                                        title: widget.book['title'] ?? '',
+                                        ebookId: id,
+                                      ),
+                                    ),
+                                  );
+
+                                  if (!mounted) return;
+                                  await fetchProgress();
+                                  return;
+                                }
+
+                                if (!mounted) return;
+
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text(
+                                      'Ebook belum tersedia untuk dibaca',
+                                    ),
+                                  ),
+                                );
                               },
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: const Color(0xFF679B7B),
