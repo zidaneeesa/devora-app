@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../services/api_service.dart';
-import 'home_screen.dart';
+import 'login_screen.dart';
 
 class RegisterVerifyOtpScreen extends StatefulWidget {
   final String name;
@@ -24,8 +24,10 @@ class RegisterVerifyOtpScreen extends StatefulWidget {
 
 class _RegisterVerifyOtpScreenState extends State<RegisterVerifyOtpScreen>
     with SingleTickerProviderStateMixin {
-  final List<TextEditingController> _otpCtrls =
-      List.generate(6, (_) => TextEditingController());
+  final List<TextEditingController> _otpCtrls = List.generate(
+    6,
+    (_) => TextEditingController(),
+  );
   final List<FocusNode> _otpFocuses = List.generate(6, (_) => FocusNode());
 
   bool _isLoading = false;
@@ -76,8 +78,12 @@ class _RegisterVerifyOtpScreenState extends State<RegisterVerifyOtpScreen>
 
     final res = await ApiService.registerVerifyOtp(
       email: widget.email,
+      phone: widget.phone,
       otp: otp,
     );
+
+    debugPrint('VERIFY REGISTER OTP STATUS: ${res['status']}');
+    debugPrint('VERIFY REGISTER OTP DATA: ${res['data']}');
 
     if (!mounted) return;
     setState(() => _isLoading = false);
@@ -85,7 +91,10 @@ class _RegisterVerifyOtpScreenState extends State<RegisterVerifyOtpScreen>
     if (res['status'] == 201 || res['status'] == 200) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(res['data']['message'] ?? 'Registrasi berhasil'),
+          content: Text(
+            res['data']['message'] ??
+                'Registrasi berhasil. Akun Anda menunggu persetujuan admin.',
+          ),
           backgroundColor: const Color(0xFF2B5A41),
           behavior: SnackBarBehavior.floating,
           shape: RoundedRectangleBorder(
@@ -96,7 +105,7 @@ class _RegisterVerifyOtpScreenState extends State<RegisterVerifyOtpScreen>
 
       Navigator.pushAndRemoveUntil(
         context,
-        MaterialPageRoute(builder: (_) => const HomeScreen()),
+        MaterialPageRoute(builder: (_) => const LoginScreen()),
         (route) => false,
       );
     } else {
@@ -154,17 +163,22 @@ class _RegisterVerifyOtpScreenState extends State<RegisterVerifyOtpScreen>
     }
   }
 
-  String _maskedPhone(String phone) {
-    final digits = phone.replaceAll(RegExp(r'\D'), '');
+  String _maskedEmail(String email) {
+    final parts = email.split('@');
 
-    if (digits.length <= 4) {
-      return '*' * digits.length;
+    if (parts.length != 2) {
+      return email;
     }
 
-    final start = digits.substring(0, 4);
-    final end = digits.substring(digits.length - 3);
+    final name = parts[0];
+    final domain = parts[1];
 
-    return '$start*****$end';
+    if (name.length <= 2) {
+      return '${name[0]}***@$domain';
+    }
+
+    final start = name.substring(0, 2);
+    return '$start***@$domain';
   }
 
   @override
@@ -227,7 +241,7 @@ class _RegisterVerifyOtpScreenState extends State<RegisterVerifyOtpScreen>
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 8),
                         child: Text(
-                          'Masukkan kode OTP yang dikirim ke WhatsApp Anda.',
+                          'Masukkan kode OTP yang dikirim ke email Anda.',
                           style: TextStyle(
                             color: Colors.white.withValues(alpha: 0.8),
                             fontSize: 15,
@@ -253,8 +267,7 @@ class _RegisterVerifyOtpScreenState extends State<RegisterVerifyOtpScreen>
                   return Transform.translate(
                     offset: Offset(
                       _shakeController.isAnimating
-                          ? 10 *
-                              ((_shakeController.value * 5) % 2 < 1 ? 1 : -1)
+                          ? 10 * ((_shakeController.value * 5) % 2 < 1 ? 1 : -1)
                           : 0,
                       0,
                     ),
@@ -268,8 +281,7 @@ class _RegisterVerifyOtpScreenState extends State<RegisterVerifyOtpScreen>
                     borderRadius: BorderRadius.circular(30),
                     boxShadow: [
                       BoxShadow(
-                        color:
-                            const Color(0xFF2B5A41).withValues(alpha: 0.08),
+                        color: const Color(0xFF2B5A41).withValues(alpha: 0.08),
                         blurRadius: 30,
                         offset: const Offset(0, 15),
                       ),
@@ -294,7 +306,7 @@ class _RegisterVerifyOtpScreenState extends State<RegisterVerifyOtpScreen>
                                 shape: BoxShape.circle,
                               ),
                               child: const Icon(
-                                Icons.chat_rounded,
+                                Icons.email_outlined,
                                 color: Colors.white,
                                 size: 20,
                               ),
@@ -302,7 +314,7 @@ class _RegisterVerifyOtpScreenState extends State<RegisterVerifyOtpScreen>
                             const SizedBox(width: 12),
                             Expanded(
                               child: Text(
-                                'OTP dikirim ke WhatsApp ${_maskedPhone(widget.phone)}',
+                                'OTP dikirim ke email ${widget.email}',
                                 style: const TextStyle(
                                   fontSize: 13,
                                   fontWeight: FontWeight.w600,
@@ -322,9 +334,7 @@ class _RegisterVerifyOtpScreenState extends State<RegisterVerifyOtpScreen>
                           decoration: BoxDecoration(
                             color: const Color(0xFFFFF0F0),
                             borderRadius: BorderRadius.circular(12),
-                            border: Border.all(
-                              color: const Color(0xFFFFCDD2),
-                            ),
+                            border: Border.all(color: const Color(0xFFFFCDD2)),
                           ),
                           child: Row(
                             children: [

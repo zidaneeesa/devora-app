@@ -376,7 +376,7 @@ class _LoansTabState extends State<LoansTab> with SingleTickerProviderStateMixin
                     ),
                   ],
                 ),
-                if (isActive) ...[
+                if (isActive && isEbook) ...[
                   const SizedBox(height: 20),
                   if (isEbook)
                     ElevatedButton.icon(
@@ -403,18 +403,6 @@ class _LoansTabState extends State<LoansTab> with SingleTickerProviderStateMixin
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                       ),
                     )
-                  else
-                    OutlinedButton.icon(
-                      onPressed: () {},
-                      icon: const Icon(Icons.update_rounded, size: 18),
-                      label: const Text('Perpanjang Pinjaman', style: TextStyle(fontWeight: FontWeight.bold)),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: const Color(0xFF2B5A41),
-                        side: const BorderSide(color: Color(0xFF2B5A41), width: 1.5),
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                      ),
-                    ),
                 ],
               ],
             ),

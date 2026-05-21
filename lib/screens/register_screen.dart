@@ -83,12 +83,12 @@ class _RegisterScreenState extends State<RegisterScreen>
       }
 
       if (_phoneCtrl.text.trim().isEmpty) {
-        _phoneError = 'Nomor WhatsApp wajib diisi';
+        _phoneError = 'Nomor HP wajib diisi';
         valid = false;
       } else if (!RegExp(
         r'^(08|628|8)[0-9]{8,13}$',
       ).hasMatch(_phoneCtrl.text.trim())) {
-        _phoneError = 'Format nomor WhatsApp tidak valid';
+        _phoneError = 'Format nomor HP tidak valid';
         valid = false;
       }
 
@@ -130,7 +130,7 @@ class _RegisterScreenState extends State<RegisterScreen>
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            res['data']['message'] ?? 'OTP pendaftaran dikirim ke WhatsApp',
+            res['data']['message'] ?? 'OTP pendaftaran dikirim ke email',
           ),
           backgroundColor: const Color(0xFF2B5A41),
           behavior: SnackBarBehavior.floating,
