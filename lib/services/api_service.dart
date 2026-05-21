@@ -340,6 +340,109 @@ class ApiService {
     return {'status': response.statusCode, 'data': jsonDecode(response.body)};
   }
 
+  // --- BOOK COLLECTIONS --- //
+
+  static Map<String, dynamic> _decodeResponse(http.Response response) {
+    try {
+      final decoded = jsonDecode(response.body);
+      if (decoded is Map<String, dynamic>) {
+        return {'status': response.statusCode, ...decoded};
+      }
+
+      return {'status': response.statusCode, 'data': decoded};
+    } catch (_) {
+      return {
+        'status': response.statusCode,
+        'message': response.body.isNotEmpty
+            ? response.body
+            : 'Response tidak valid dari server',
+      };
+    }
+  }
+
+  static String _bookIdFromMap(Map<String, dynamic> book) {
+    final id =
+        book['id'] ??
+        book['book_id'] ??
+        book['id_buku'] ??
+        book['isbn'] ??
+        book['title'];
+
+    return id?.toString() ?? '';
+  }
+
+  static Future<Map<String, dynamic>> getBookCollections(String nik) async {
+    try {
+      final response = await http.get(
+        Uri.parse(
+          '$baseUrl/book-collections?nik=${Uri.encodeQueryComponent(nik)}',
+        ),
+        headers: await _getHeaders(),
+      );
+
+      return _decodeResponse(response);
+    } catch (e) {
+      return {
+        'status': 500,
+        'message': 'Gagal mengambil koleksi buku: $e',
+        'data': [],
+      };
+    }
+  }
+
+  static Future<Map<String, dynamic>> addBookCollection({
+    required String nik,
+    required Map<String, dynamic> book,
+    String collectionType = 'catalog',
+  }) async {
+    try {
+      final bookId = _bookIdFromMap(book);
+
+      if (bookId.isEmpty) {
+        return {'status': 422, 'message': 'ID buku tidak ditemukan'};
+      }
+
+      final response = await http.post(
+        Uri.parse('$baseUrl/book-collections'),
+        headers: await _getHeaders(),
+        body: jsonEncode({
+          'nik': nik,
+          'book_id': bookId,
+          'title': book['title']?.toString() ?? 'Tanpa Judul',
+          'author': book['author']?.toString() ?? '-',
+          'cover_image': book['cover_image']?.toString(),
+          'collection_type': collectionType,
+          'book_data': {...book, 'collection_type': collectionType},
+        }),
+      );
+
+      return _decodeResponse(response);
+    } catch (e) {
+      return {'status': 500, 'message': 'Gagal menyimpan buku: $e'};
+    }
+  }
+
+  static Future<Map<String, dynamic>> deleteBookCollection({
+    required String nik,
+    required String bookId,
+    String collectionType = 'catalog',
+  }) async {
+    try {
+      final response = await http.delete(
+        Uri.parse(
+          '$baseUrl/book-collections/${Uri.encodeComponent(bookId)}'
+          '?nik=${Uri.encodeQueryComponent(nik)}'
+          '&collection_type=${Uri.encodeQueryComponent(collectionType)}',
+        ),
+        headers: await _getHeaders(),
+      );
+
+      return _decodeResponse(response);
+    } catch (e) {
+      return {'status': 500, 'message': 'Gagal menghapus koleksi buku: $e'};
+    }
+  }
+
   // --- NOTIFICATIONS --- //
 
   static Future<Map<String, dynamic>> getNotifications() async {
@@ -376,65 +479,65 @@ class ApiService {
     } catch (_) {}
   }
 
-  static Future<Map<String, dynamic>> getEbooks(String query) async {
-    final response = await http.get(
-      Uri.parse('$baseUrl/ebooks/search?q=$query'),
-      headers: await _getHeaders(),
-    );
+  static Future<Map<String, dynamic>> getEbooks(
+    String query, {
+    String source = 'all',
+    int page = 1,
+  }) async {
+    try {
+      final uri = Uri.parse('$baseUrl/ebooks/search').replace(
+        queryParameters: {
+          'q': query.trim(),
+          'source': source,
+          'page': page.toString(),
+        },
+      );
 
-    final data = jsonDecode(response.body);
+      final response = await http.get(uri, headers: await _getHeaders());
 
-    if (response.statusCode == 200) {
-      List ebooks = data['data'] ?? [];
+      final decoded = jsonDecode(response.body);
 
-      // 🔥 FILTER HANYA PDF VALID
-      ebooks = ebooks.where((book) {
-        final id = book['id']?.toString() ?? "";
-        final pages = book['pages'] ?? 0;
-
-        // ❌ skip id aneh
-        if (id.contains('http')) return false;
-
-        // ❌ skip audio
-        if (id.toLowerCase().contains('mp3')) return false;
-
-        // ❌ skip yang tidak punya halaman
-        if (pages == 0) return false;
-
-        // ✅ cek formats ada pdf
-        final formats = book['formats'];
-        if (formats != null && formats is Map) {
-          for (var key in formats.keys) {
-            if (key.toString().contains('pdf')) {
-              return true;
-            }
-          }
-        }
-
-        // ✅ fallback archive
-        if (id.isNotEmpty && !id.contains(' ')) {
-          return true;
-        }
-
-        return false;
-      }).toList();
-
-      return {'status': response.statusCode, 'data': data['data'] ?? []};
+      return {
+        'status': response.statusCode,
+        'data': decoded['data'] ?? [],
+        'message': decoded['message'] ?? '',
+      };
+    } catch (e) {
+      return {
+        'status': 500,
+        'data': [],
+        'message': 'Gagal mengambil ebook: $e',
+      };
     }
-
-    return {'status': response.statusCode, 'data': []};
   }
 
-  static Future<Map<String, dynamic>> getEbookDetail(String id) async {
-    final response = await http.get(
-      Uri.parse('$baseUrl/ebooks/archive/$id'),
-      headers: await _getHeaders(),
-    );
+  static Future<Map<String, dynamic>> getEbookDetail(
+    String id, {
+    String source = 'internet_archive',
+  }) async {
+    try {
+      final safeSource = Uri.encodeComponent(source);
+      final safeId = Uri.encodeComponent(id);
 
-    return {
-      'status': response.statusCode,
-      'data': jsonDecode(response.body)['data'],
-    };
+      final response = await http.get(
+        Uri.parse('$baseUrl/ebooks/$safeSource/$safeId'),
+        headers: await _getHeaders(),
+      );
+
+      final decoded = _decodeResponse(response);
+
+      return {
+        'status': response.statusCode,
+        'data': decoded['data'],
+        'message': decoded['message'] ?? '',
+      };
+    } catch (e) {
+      return {
+        'status': 500,
+        'data': null,
+        'message': 'Gagal mengambil detail ebook: $e',
+      };
+    }
   }
 
   static Future<List<dynamic>> getAllReadingProgress() async {
@@ -496,34 +599,57 @@ class ApiService {
   }
 
   static Future<Map<String, dynamic>> getReadingProgress(String ebookId) async {
-    final response = await http.get(
-      Uri.parse('$baseUrl/reading-progress/$ebookId'),
-      headers: await _getHeaders(),
-    );
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/reading-progress/$ebookId'),
+        headers: await _getHeaders(),
+      );
 
-    return {'status': response.statusCode, 'data': jsonDecode(response.body)};
+      final decoded = response.body.isNotEmpty
+          ? jsonDecode(response.body)
+          : null;
+
+      final progressData = decoded is Map && decoded['data'] != null
+          ? decoded['data']
+          : decoded;
+
+      return {'status': response.statusCode, 'data': progressData};
+    } catch (e) {
+      return {
+        'status': 500,
+        'data': null,
+        'message': 'Gagal mengambil progress: $e',
+      };
+    }
   }
 
-  static Future<void> updateReadingProgress(
+  static Future<Map<String, dynamic>> updateReadingProgress(
     String ebookId,
-    double progress, // 🔥 ubah ini
+    double progress,
     int currentPage,
     int totalPage,
   ) async {
-    final prefs = await SharedPreferences.getInstance();
-    print("TOKEN: ${prefs.getString('auth_token')}");
+    try {
+      final res = await http.post(
+        Uri.parse('$baseUrl/reading-progress/update'),
+        headers: await _getHeaders(),
+        body: jsonEncode({
+          'ebook_id': ebookId,
+          'progress': progress,
+          'current_page': currentPage,
+          'total_page': totalPage,
+        }),
+      );
 
-    final res = await http.post(
-      Uri.parse('$baseUrl/reading-progress/update'),
-      headers: await _getHeaders(),
-      body: jsonEncode({
-        'ebook_id': ebookId,
-        'progress': progress,
-        'current_page': currentPage,
-        'total_page': totalPage,
-      }),
-    );
+      print('UPDATE PROGRESS RESPONSE: ${res.body}');
 
-    print("RESPONSE: ${res.body}"); // 🔥 tambah ini
+      return {'status': res.statusCode, 'data': jsonDecode(res.body)};
+    } catch (e) {
+      return {
+        'status': 500,
+        'data': null,
+        'message': 'Gagal update progress: $e',
+      };
+    }
   }
 }
