@@ -2,11 +2,14 @@ import 'package:flutter/material.dart';
 import '../../services/api_service.dart';
 import '../book_detail_screen.dart';
 import '../chatbot_screen.dart';
+import 'catalog_tab.dart';
 import '../../widgets/notification_bell.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 class HomeTab extends StatefulWidget {
-  const HomeTab({super.key});
+  final VoidCallback? onSeeAllCatalog;
+
+  const HomeTab({super.key, this.onSeeAllCatalog});
 
   @override
   State<HomeTab> createState() => _HomeTabState();
@@ -584,41 +587,6 @@ class _HomeTabState extends State<HomeTab> {
                           ),
                           const SizedBox(height: 32),
 
-                          // Quick Search Bar
-                          Container(
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(20),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withValues(alpha: 0.03),
-                                  blurRadius: 15,
-                                  offset: const Offset(0, 5),
-                                ),
-                              ],
-                            ),
-                            child: TextField(
-                              readOnly: true, // redirect logic if needed
-                              decoration: InputDecoration(
-                                hintText: 'Cari buku, e-book, atau penulis...',
-                                hintStyle: TextStyle(
-                                  color: Colors.grey.shade400,
-                                  fontSize: 14,
-                                ),
-                                prefixIcon: const Icon(
-                                  Icons.search_rounded,
-                                  color: Color(0xFF2B5A41),
-                                ),
-                                border: InputBorder.none,
-                                contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 16,
-                                  vertical: 16,
-                                ),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 32),
-
                           // Section Title
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -632,12 +600,35 @@ class _HomeTabState extends State<HomeTab> {
                                   color: Color(0xFF1E293B),
                                 ),
                               ),
-                              Text(
-                                'Lihat Semua',
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.bold,
-                                  color: Theme.of(context).colorScheme.primary,
+                              InkWell(
+                                onTap: () {
+                                  if (widget.onSeeAllCatalog != null) {
+                                    widget.onSeeAllCatalog!();
+                                  } else {
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (_) => const CatalogTab(),
+                                      ),
+                                    );
+                                  }
+                                },
+                                borderRadius: BorderRadius.circular(8),
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 6,
+                                  ),
+                                  child: Text(
+                                    'Lihat Semua',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.bold,
+                                      color: Theme.of(
+                                        context,
+                                      ).colorScheme.primary,
+                                    ),
+                                  ),
                                 ),
                               ),
                             ],

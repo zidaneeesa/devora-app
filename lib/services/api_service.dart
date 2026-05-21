@@ -101,21 +101,16 @@ class ApiService {
 
   static Future<Map<String, dynamic>> registerVerifyOtp({
     required String email,
+    required String phone,
     required String otp,
   }) async {
     final response = await http.post(
       Uri.parse('$baseUrl/auth/register/verify-otp'),
       headers: await _getHeaders(),
-      body: jsonEncode({'email': email, 'otp': otp}),
+      body: jsonEncode({'email': email, 'phone': phone, 'otp': otp}),
     );
 
-    final data = jsonDecode(response.body);
-
-    if (response.statusCode == 201 || response.statusCode == 200) {
-      await _saveToken(data);
-    }
-
-    return {'status': response.statusCode, 'data': data};
+    return {'status': response.statusCode, 'data': jsonDecode(response.body)};
   }
 
   // --- MEMBER PROFILE --- //
