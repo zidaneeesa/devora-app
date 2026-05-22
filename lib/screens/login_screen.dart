@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import '../services/api_service.dart';
 import '../services/api_config.dart';
 import '../widgets/custom_text_field.dart';
@@ -9,17 +8,18 @@ import 'claim_lookup_screen.dart';
 import 'forgot_password_screen.dart';
 
 class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key});
+  final bool showLogoutSuccess;
+
+  const LoginScreen({super.key, this.showLogoutSuccess = false});
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStateMixin {
+class _LoginScreenState extends State<LoginScreen>
+    with SingleTickerProviderStateMixin {
   final _emailCtrl = TextEditingController();
   final _passwordCtrl = TextEditingController();
-  final _emailFocus = FocusNode();
-  final _passwordFocus = FocusNode();
   bool _isLoading = false;
   bool _obscurePassword = true;
 
@@ -42,6 +42,25 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     _shakeAnimation = Tween<double>(begin: 0, end: 1).animate(
       CurvedAnimation(parent: _shakeController, curve: Curves.elasticIn),
     );
+
+    if (widget.showLogoutSuccess) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text(
+              'Anda berhasil log out. Silakan login kembali.',
+            ),
+            backgroundColor: const Color(0xFF2B5A41),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+          ),
+        );
+      });
+    }
   }
 
   @override
@@ -53,7 +72,9 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
   }
 
   void _clearErrors() {
-    if (_emailError != null || _passwordError != null || _generalError != null) {
+    if (_emailError != null ||
+        _passwordError != null ||
+        _generalError != null) {
       setState(() {
         _emailError = null;
         _passwordError = null;
@@ -66,15 +87,25 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     _shakeController.forward(from: 0);
   }
 
-  void _login() async {
+  Future<void> _login() async {
+    FocusScope.of(context).unfocus();
+
+    final email = _emailCtrl.text.trim();
+    final password = _passwordCtrl.text;
+
     bool hasError = false;
+
     setState(() {
-      _clearErrors();
-      if (_emailCtrl.text.trim().isEmpty) {
+      _emailError = null;
+      _passwordError = null;
+      _generalError = null;
+
+      if (email.isEmpty) {
         _emailError = 'Email tidak boleh kosong';
         hasError = true;
       }
-      if (_passwordCtrl.text.isEmpty) {
+
+      if (password.isEmpty) {
         _passwordError = 'Kata sandi diperlukan';
         hasError = true;
       }
@@ -86,33 +117,56 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     }
 
     setState(() => _isLoading = true);
-    final res = await ApiService.login(_emailCtrl.text.trim(), _passwordCtrl.text);
-    if (!mounted) return;
-    setState(() => _isLoading = false);
 
-    if (res['status'] == 200) {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => const HomeScreen()),
-      );
-    } else {
+    try {
+      final res = await ApiService.login(email, password);
+
+      if (!mounted) return;
+
+      setState(() => _isLoading = false);
+
+      if (res['status'] == 200) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const HomeScreen()),
+        );
+        return;
+      }
+
       final data = res['data'];
-      if (res['status'] == 422 && data['errors'] != null) {
+
+      if (res['status'] == 422 && data is Map && data['errors'] != null) {
+        final errors = data['errors'] as Map;
+
         setState(() {
-          final errors = data['errors'] as Map;
-          if (errors.containsKey('email')) _emailError = errors['email'][0];
-          if (errors.containsKey('password')) _passwordError = errors['password'][0];
+          if (errors.containsKey('email')) {
+            _emailError = errors['email'][0].toString();
+          }
+
+          if (errors.containsKey('password')) {
+            _passwordError = errors['password'][0].toString();
+          }
         });
       } else {
         setState(() {
-          _generalError = data['message'] ?? 'Kredensial tidak valid.';
+          _generalError = data is Map && data['message'] != null
+              ? data['message'].toString()
+              : 'Kredensial tidak valid.';
         });
       }
+
+      _shake();
+    } catch (_) {
+      if (!mounted) return;
+
+      setState(() {
+        _isLoading = false;
+        _generalError = 'Gagal menghubungi server. Silakan coba lagi.';
+      });
+
       _shake();
     }
   }
-
-
 
   void _showApiBottomSheet() {
     String tempEnv = ApiConfig.selectedEnv;
@@ -128,7 +182,10 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
           builder: (ctx, setModalState) {
             return Container(
               padding: EdgeInsets.only(
-                top: 20, left: 24, right: 24, bottom: MediaQuery.of(ctx).viewInsets.bottom + 24,
+                top: 20,
+                left: 24,
+                right: 24,
+                bottom: MediaQuery.of(ctx).viewInsets.bottom + 24,
               ),
               decoration: const BoxDecoration(
                 color: Colors.white,
@@ -138,7 +195,8 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Container(
-                    width: 40, height: 4,
+                    width: 40,
+                    height: 4,
                     decoration: BoxDecoration(
                       color: Colors.grey.shade300,
                       borderRadius: BorderRadius.circular(2),
@@ -147,9 +205,20 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                   const SizedBox(height: 16),
                   const Row(
                     children: [
-                      Icon(Icons.dns_outlined, color: Color(0xFF2B5A41), size: 22),
+                      Icon(
+                        Icons.dns_outlined,
+                        color: Color(0xFF2B5A41),
+                        size: 22,
+                      ),
                       SizedBox(width: 10),
-                      Text('Konfigurasi Server', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF2B5A41))),
+                      Text(
+                        'Konfigurasi Server',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF2B5A41),
+                        ),
+                      ),
                     ],
                   ),
                   const SizedBox(height: 16),
@@ -161,20 +230,31 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                         borderRadius: BorderRadius.circular(12),
                         onTap: () => setModalState(() => tempEnv = env),
                         child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 14,
+                          ),
                           decoration: BoxDecoration(
-                            color: isSelected ? const Color(0xFFE8F1EC) : Colors.grey.shade50,
+                            color: isSelected
+                                ? const Color(0xFFE8F1EC)
+                                : Colors.grey.shade50,
                             borderRadius: BorderRadius.circular(12),
                             border: Border.all(
-                              color: isSelected ? const Color(0xFF2B5A41) : Colors.grey.shade200,
+                              color: isSelected
+                                  ? const Color(0xFF2B5A41)
+                                  : Colors.grey.shade200,
                               width: isSelected ? 1.5 : 1,
                             ),
                           ),
                           child: Row(
                             children: [
                               Icon(
-                                isSelected ? Icons.radio_button_checked : Icons.radio_button_off,
-                                color: isSelected ? const Color(0xFF2B5A41) : Colors.grey,
+                                isSelected
+                                    ? Icons.radio_button_checked
+                                    : Icons.radio_button_off,
+                                color: isSelected
+                                    ? const Color(0xFF2B5A41)
+                                    : Colors.grey,
                                 size: 20,
                               ),
                               const SizedBox(width: 12),
@@ -182,14 +262,24 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Text(env, style: TextStyle(
-                                      fontWeight: FontWeight.w600,
-                                      color: isSelected ? const Color(0xFF2B5A41) : Colors.black87,
-                                    )),
+                                    Text(
+                                      env,
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.w600,
+                                        color: isSelected
+                                            ? const Color(0xFF2B5A41)
+                                            : Colors.black87,
+                                      ),
+                                    ),
                                     if (env != 'Custom')
                                       Text(
-                                        env == 'Production' ? 'Server utama' : 'Server pengujian',
-                                        style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
+                                        env == 'Production'
+                                            ? 'Server utama'
+                                            : 'Server pengujian',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: Colors.grey.shade500,
+                                        ),
                                       ),
                                   ],
                                 ),
@@ -210,9 +300,21 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                         prefixIcon: const Icon(Icons.computer, size: 20),
                         filled: true,
                         fillColor: Colors.grey.shade50,
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.grey.shade300)),
-                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.grey.shade300)),
-                        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFF2B5A41), width: 1.5)),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(color: Colors.grey.shade300),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(color: Colors.grey.shade300),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: const BorderSide(
+                            color: Color(0xFF2B5A41),
+                            width: 1.5,
+                          ),
+                        ),
                       ),
                       keyboardType: TextInputType.number,
                     ),
@@ -222,12 +324,27 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                       decoration: InputDecoration(
                         labelText: 'Port',
                         hintText: '8000',
-                        prefixIcon: const Icon(Icons.settings_ethernet, size: 20),
+                        prefixIcon: const Icon(
+                          Icons.settings_ethernet,
+                          size: 20,
+                        ),
                         filled: true,
                         fillColor: Colors.grey.shade50,
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.grey.shade300)),
-                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.grey.shade300)),
-                        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFF2B5A41), width: 1.5)),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(color: Colors.grey.shade300),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(color: Colors.grey.shade300),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: const BorderSide(
+                            color: Color(0xFF2B5A41),
+                            width: 1.5,
+                          ),
+                        ),
                       ),
                       keyboardType: TextInputType.number,
                     ),
@@ -237,14 +354,24 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                     width: double.infinity,
                     child: ElevatedButton(
                       onPressed: () async {
-                        await ApiConfig.saveSetting(tempEnv, ip: ipCtrl.text.trim(), port: portCtrl.text.trim());
-                        if (ctx.mounted) Navigator.pop(ctx);
+                        await ApiConfig.saveSetting(
+                          tempEnv,
+                          ip: ipCtrl.text.trim(),
+                          port: portCtrl.text.trim(),
+                        );
+
+                        if (!mounted) return;
+
+                        Navigator.of(context).pop();
+
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
                             content: Text('Server: ${ApiConfig.baseUrl}'),
                             backgroundColor: const Color(0xFF2B5A41),
                             behavior: SnackBarBehavior.floating,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
                           ),
                         );
                       },
@@ -252,9 +379,14 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                         backgroundColor: const Color(0xFF2B5A41),
                         foregroundColor: Colors.white,
                         padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
                       ),
-                      child: const Text('Simpan', style: TextStyle(fontWeight: FontWeight.bold)),
+                      child: const Text(
+                        'Simpan',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
                     ),
                   ),
                 ],
@@ -288,7 +420,10 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
               ),
               child: SafeArea(
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 20),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 24.0,
+                    vertical: 20,
+                  ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -302,7 +437,11 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                                 color: Colors.white.withValues(alpha: 0.15),
                                 shape: BoxShape.circle,
                               ),
-                              child: const Icon(Icons.school, color: Colors.white, size: 28),
+                              child: const Icon(
+                                Icons.school,
+                                color: Colors.white,
+                                size: 28,
+                              ),
                             ),
                           ),
                           const SizedBox(width: 16),
@@ -375,7 +514,9 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                         borderRadius: BorderRadius.circular(30),
                         boxShadow: [
                           BoxShadow(
-                            color: const Color(0xFF2B5A41).withValues(alpha: 0.08),
+                            color: const Color(
+                              0xFF2B5A41,
+                            ).withValues(alpha: 0.08),
                             blurRadius: 30,
                             offset: const Offset(0, 15),
                           ),
@@ -390,19 +531,26 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                               decoration: BoxDecoration(
                                 color: const Color(0xFFFFF0F0),
                                 borderRadius: BorderRadius.circular(12),
-                                border: Border.all(color: const Color(0xFFFFCDD2)),
+                                border: Border.all(
+                                  color: const Color(0xFFFFCDD2),
+                                ),
                               ),
                               child: Row(
                                 children: [
-                                  const Icon(Icons.error_outline, color: Color(0xFFE53935), size: 20),
+                                  const Icon(
+                                    Icons.error_outline,
+                                    color: Color(0xFFE53935),
+                                    size: 20,
+                                  ),
                                   const SizedBox(width: 10),
                                   Expanded(
                                     child: Text(
                                       _generalError!,
                                       style: const TextStyle(
-                                          color: Color(0xFFE53935),
-                                          fontSize: 13,
-                                          fontWeight: FontWeight.w600),
+                                        color: Color(0xFFE53935),
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w600,
+                                      ),
                                     ),
                                   ),
                                 ],
@@ -427,14 +575,23 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              const Text('Kata Sandi',
-                                  style: TextStyle(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w600,
-                                      color: Color(0xFF333333))),
+                              const Text(
+                                'Kata Sandi',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                  color: Color(0xFF333333),
+                                ),
+                              ),
                               GestureDetector(
                                 onTap: () {
-                                  Navigator.push(context, MaterialPageRoute(builder: (_) => const ForgotPasswordScreen()));
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) =>
+                                          const ForgotPasswordScreen(),
+                                    ),
+                                  );
                                 },
                                 child: const Text(
                                   'Lupa?',
@@ -458,11 +615,15 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                             onChanged: _clearErrors,
                             suffixIcon: IconButton(
                               icon: Icon(
-                                _obscurePassword ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                                _obscurePassword
+                                    ? Icons.visibility_off_outlined
+                                    : Icons.visibility_outlined,
                                 color: Colors.grey.shade400,
                                 size: 22,
                               ),
-                              onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+                              onPressed: () => setState(
+                                () => _obscurePassword = !_obscurePassword,
+                              ),
                             ),
                           ),
                           const SizedBox(height: 32),
@@ -483,17 +644,27 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                                 ? const SizedBox(
                                     height: 24,
                                     width: 24,
-                                    child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5),
+                                    child: CircularProgressIndicator(
+                                      color: Colors.white,
+                                      strokeWidth: 2.5,
+                                    ),
                                   )
                                 : const Row(
                                     mainAxisAlignment: MainAxisAlignment.center,
                                     children: [
                                       Text(
                                         'Masuk Sekarang',
-                                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 0.5),
+                                        style: TextStyle(
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.bold,
+                                          letterSpacing: 0.5,
+                                        ),
                                       ),
                                       SizedBox(width: 8),
-                                      Icon(Icons.arrow_forward_rounded, size: 20),
+                                      Icon(
+                                        Icons.arrow_forward_rounded,
+                                        size: 20,
+                                      ),
                                     ],
                                   ),
                           ),
@@ -510,7 +681,11 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                           padding: EdgeInsets.symmetric(horizontal: 16),
                           child: Text(
                             'Belum punya akun?',
-                            style: TextStyle(color: Colors.grey, fontSize: 13, fontWeight: FontWeight.w500),
+                            style: TextStyle(
+                              color: Colors.grey,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
+                            ),
                           ),
                         ),
                         Expanded(child: Divider(color: Colors.grey.shade300)),
@@ -524,29 +699,50 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                         Expanded(
                           child: OutlinedButton(
                             onPressed: () => Navigator.push(
-                                context, MaterialPageRoute(builder: (_) => const RegisterScreen())),
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => const RegisterScreen(),
+                              ),
+                            ),
                             style: OutlinedButton.styleFrom(
                               foregroundColor: const Color(0xFF2B5A41),
-                              side: const BorderSide(color: Color(0xFF2B5A41), width: 1.5),
+                              side: const BorderSide(
+                                color: Color(0xFF2B5A41),
+                                width: 1.5,
+                              ),
                               padding: const EdgeInsets.symmetric(vertical: 16),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14),
+                              ),
                             ),
-                            child: const Text('Daftar Umum', style: TextStyle(fontWeight: FontWeight.bold)),
+                            child: const Text(
+                              'Daftar Umum',
+                              style: TextStyle(fontWeight: FontWeight.bold),
+                            ),
                           ),
                         ),
                         const SizedBox(width: 12),
                         Expanded(
                           child: ElevatedButton(
                             onPressed: () => Navigator.push(
-                                context, MaterialPageRoute(builder: (_) => const ClaimLookupScreen())),
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => const ClaimLookupScreen(),
+                              ),
+                            ),
                             style: ElevatedButton.styleFrom(
                               backgroundColor: const Color(0xFFE8F1EC),
                               foregroundColor: const Color(0xFF2B5A41),
                               elevation: 0,
                               padding: const EdgeInsets.symmetric(vertical: 16),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14),
+                              ),
                             ),
-                            child: const Text('Aktivasi Siswa/Guru', style: TextStyle(fontWeight: FontWeight.bold)),
+                            child: const Text(
+                              'Aktivasi Siswa/Guru',
+                              style: TextStyle(fontWeight: FontWeight.bold),
+                            ),
                           ),
                         ),
                       ],

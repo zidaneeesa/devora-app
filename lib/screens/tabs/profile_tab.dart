@@ -19,6 +19,7 @@ class _ProfileTabState extends State<ProfileTab> {
   Map<String, dynamic>? _user;
   bool _isLoading = true;
   bool _isUploadingAvatar = false;
+  bool _isLoggingOut = false;
   int _totalLoans = 0;
   int _activeLoans = 0;
   int _avatarVersion = DateTime.now().millisecondsSinceEpoch;
@@ -59,14 +60,163 @@ class _ProfileTabState extends State<ProfileTab> {
     }
   }
 
-  void _logout() async {
-    await ApiService.logout();
-    if (!mounted) return;
-    Navigator.pushAndRemoveUntil(
-      context,
-      MaterialPageRoute(builder: (_) => const LoginScreen()),
-      (route) => false,
+  Future<bool?> _showLogoutDialog() {
+    return showDialog<bool>(
+      context: context,
+      barrierDismissible: true,
+      builder: (dialogContext) {
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: const EdgeInsets.symmetric(horizontal: 24),
+          child: Container(
+            padding: const EdgeInsets.all(22),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(28),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.08),
+                  blurRadius: 24,
+                  offset: const Offset(0, 10),
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  height: 72,
+                  width: 72,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFF1EE),
+                    borderRadius: BorderRadius.circular(22),
+                  ),
+                  child: const Icon(
+                    Icons.logout_rounded,
+                    color: Color(0xFFFF5A3D),
+                    size: 36,
+                  ),
+                ),
+                const SizedBox(height: 18),
+                const Text(
+                  'Log Out',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFF1A1D1B),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                const Text(
+                  'Apakah Anda yakin ingin log out dari akun ini?',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 15,
+                    height: 1.5,
+                    color: Color(0xFF6B7770),
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 24),
+                Row(
+                  children: [
+                    Expanded(
+                      child: SizedBox(
+                        height: 50,
+                        child: OutlinedButton(
+                          onPressed: () =>
+                              Navigator.of(dialogContext).pop(false),
+                          style: OutlinedButton.styleFrom(
+                            side: BorderSide(color: Colors.grey.shade300),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            backgroundColor: Colors.white,
+                          ),
+                          child: const Text(
+                            'Batal',
+                            style: TextStyle(
+                              color: Color(0xFF7B7B7B),
+                              fontWeight: FontWeight.w700,
+                              fontSize: 15,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: SizedBox(
+                        height: 50,
+                        child: ElevatedButton(
+                          onPressed: () =>
+                              Navigator.of(dialogContext).pop(true),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFFFF5A3D),
+                            foregroundColor: Colors.white,
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                          ),
+                          child: const Text(
+                            'Log Out',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w800,
+                              fontSize: 15,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
+  }
+
+  Future<void> _logout() async {
+    if (_isLoggingOut) return;
+
+    final confirm = await _showLogoutDialog();
+
+    if (!mounted || confirm != true) return;
+
+    setState(() => _isLoggingOut = true);
+
+    try {
+      await ApiService.logout();
+
+      if (!mounted) return;
+
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(
+          builder: (_) => const LoginScreen(showLogoutSuccess: true),
+        ),
+        (route) => false,
+      );
+    } catch (_) {
+      if (!mounted) return;
+
+      setState(() => _isLoggingOut = false);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Gagal log out. Silakan coba lagi.'),
+          backgroundColor: Colors.red.shade600,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+      );
+    }
   }
 
   String _formatTanggalIndo(dynamic value) {
@@ -762,7 +912,10 @@ class _ProfileTabState extends State<ProfileTab> {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               const Text('Gagal memuat profil.'),
-              TextButton(onPressed: _logout, child: const Text('Logout')),
+              TextButton(
+                onPressed: _isLoggingOut ? null : _logout,
+                child: Text(_isLoggingOut ? 'Sedang Log Out...' : 'Log Out'),
+              ),
             ],
           ),
         ),
@@ -1204,14 +1357,14 @@ class _ProfileTabState extends State<ProfileTab> {
                               ),
                             ),
                             title: Text(
-                              'Keluar Aplikasi',
+                              _isLoggingOut ? 'Sedang Log Out...' : 'Log Out',
                               style: TextStyle(
                                 fontWeight: FontWeight.w700,
                                 fontSize: 15,
                                 color: Colors.red.shade600,
                               ),
                             ),
-                            onTap: _logout,
+                            onTap: _isLoggingOut ? null : _logout,
                           ),
                         ],
                       ),
