@@ -17,6 +17,8 @@ class _CatalogTabState extends State<CatalogTab> {
   bool _isLoading = true;
   String _searchQuery = '';
   String _activeFilter = 'Semua';
+  String? _errorMessage;
+  final TextEditingController _searchCtrl = TextEditingController();
 
   // Pagination states
   int _page = 1;
@@ -39,14 +41,17 @@ class _CatalogTabState extends State<CatalogTab> {
 
   @override
   void dispose() {
-    _scrollController.dispose();
     _debounce?.cancel();
+    _searchCtrl.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
   void _scrollListener() {
-    if (_scrollController.position.pixels >=
-        _scrollController.position.maxScrollExtent - 200) {
+    if (!_scrollController.hasClients) return;
+
+    final position = _scrollController.position;
+    if (position.pixels >= position.maxScrollExtent - 220) {
       _loadMore();
     }
   }
@@ -58,64 +63,125 @@ class _CatalogTabState extends State<CatalogTab> {
         _books = [];
         _hasMore = true;
         _isLoading = true;
+        _isLoadingMore = false;
+        _errorMessage = null;
       });
     }
 
-    if (!_hasMore) return;
+    if (!_hasMore || (_isLoadingMore && !reset)) return;
 
-    final res = await ApiService.getBooks(
-      page: _page,
-      q: _searchQuery,
-      sort: _activeFilter,
-    );
-    if (res['status'] == 200 && mounted) {
-      final newBooks = res['data']['data'] ?? [];
-      setState(() {
-        _books.addAll(newBooks);
-        _isLoading = false;
-        _isLoadingMore = false;
+    try {
+      final res = await ApiService.getBooks(
+        page: _page,
+        q: _searchQuery,
+        sort: _activeFilter,
+      );
 
-        if (newBooks.length < 20) {
-          _hasMore = false;
+      if (!mounted) return;
+
+      if (res['status'] == 200) {
+        final rawData = res['data'];
+        final List<dynamic> newBooks;
+
+        if (rawData is Map && rawData['data'] is List) {
+          newBooks = List<dynamic>.from(rawData['data']);
+        } else if (rawData is List) {
+          newBooks = List<dynamic>.from(rawData);
+        } else {
+          newBooks = [];
         }
-      });
-    } else {
-      if (mounted) {
+
+        final bool hasNextPage =
+            rawData is Map &&
+            rawData['next_page_url'] != null &&
+            rawData['next_page_url'].toString().isNotEmpty;
+
         setState(() {
+          if (reset) {
+            _books = newBooks;
+          } else {
+            _books.addAll(newBooks);
+          }
+
           _isLoading = false;
           _isLoadingMore = false;
+          _errorMessage = null;
+
+          if (rawData is Map && rawData.containsKey('next_page_url')) {
+            _hasMore = hasNextPage;
+          } else {
+            _hasMore = newBooks.length >= 20;
+          }
+        });
+      } else {
+        final data = res['data'];
+        final message = data is Map && data['message'] != null
+            ? data['message'].toString()
+            : res['message']?.toString() ?? 'Gagal memuat katalog buku.';
+
+        setState(() {
+          if (_isLoadingMore && !reset && _page > 1) {
+            _page--;
+          }
+          _isLoading = false;
+          _isLoadingMore = false;
+          _errorMessage = message;
         });
       }
+    } catch (e) {
+      if (!mounted) return;
+
+      debugPrint('Gagal memuat katalog buku: $e');
+
+      setState(() {
+        if (_isLoadingMore && !reset && _page > 1) {
+          _page--;
+        }
+        _isLoading = false;
+        _isLoadingMore = false;
+        _errorMessage =
+            'Gagal menghubungi server. Tarik layar untuk mencoba lagi.';
+      });
     }
   }
 
   void _loadMore() {
-    if (_hasMore && !_isLoadingMore && !_isLoading) {
-      setState(() {
-        _isLoadingMore = true;
-        _page++;
-      });
-      _fetchBooks();
-    }
+    if (!_hasMore || _isLoadingMore || _isLoading) return;
+
+    setState(() {
+      _isLoadingMore = true;
+      _page++;
+    });
+
+    _fetchBooks();
   }
 
   void _filterBooks(String query) {
     if (_debounce?.isActive ?? false) _debounce!.cancel();
-    _debounce = Timer(const Duration(milliseconds: 500), () {
-      if (mounted) {
-        setState(() {
-          _searchQuery = query;
-        });
-        _fetchBooks(reset: true);
-      }
+
+    _debounce = Timer(const Duration(milliseconds: 450), () {
+      if (!mounted) return;
+
+      final normalizedQuery = query.trim();
+      if (_searchQuery == normalizedQuery) return;
+
+      setState(() {
+        _searchQuery = normalizedQuery;
+      });
+
+      _fetchBooks(reset: true);
     });
   }
 
   void _onFilterChanged(String filter) {
     if (_activeFilter == filter) return;
+
+    FocusScope.of(context).unfocus();
+
     setState(() {
       _activeFilter = filter;
     });
+
     _fetchBooks(reset: true);
   }
 
@@ -143,10 +209,11 @@ class _CatalogTabState extends State<CatalogTab> {
         children: [
           const Icon(Icons.search_rounded, color: Color(0xFF2B5A41), size: 24),
           const SizedBox(width: 10),
-
           Expanded(
             child: TextField(
+              controller: _searchCtrl,
               onChanged: _filterBooks,
+              textInputAction: TextInputAction.search,
               style: const TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w600,
@@ -164,9 +231,20 @@ class _CatalogTabState extends State<CatalogTab> {
               ),
             ),
           ),
-
-          const SizedBox(width: 8),
-
+          if (_searchCtrl.text.isNotEmpty)
+            IconButton(
+              tooltip: 'Hapus pencarian',
+              onPressed: () {
+                _searchCtrl.clear();
+                _filterBooks('');
+                setState(() {});
+              },
+              icon: Icon(
+                Icons.close_rounded,
+                size: 20,
+                color: Colors.grey.shade500,
+              ),
+            ),
           PopupMenuButton<String>(
             tooltip: 'Filter buku',
             color: const Color(0xFF2B5A41),
@@ -176,12 +254,8 @@ class _CatalogTabState extends State<CatalogTab> {
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(14),
             ),
-            onSelected: (value) {
-              _onFilterChanged(value);
-            },
+            onSelected: _onFilterChanged,
             itemBuilder: (context) {
-              final filters = ['Semua', 'Terbaru', 'Populer'];
-
               return filters.map((filter) {
                 final isSelected = _activeFilter == filter;
 
@@ -256,70 +330,6 @@ class _CatalogTabState extends State<CatalogTab> {
           ),
         ],
       ),
-    );
-  }
-
-  void _openFilterSheet() {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (context) {
-        return Container(
-          padding: const EdgeInsets.fromLTRB(20, 14, 20, 24),
-          decoration: const BoxDecoration(
-            color: Color(0xFFF7FAF8),
-            borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(
-                child: Container(
-                  width: 44,
-                  height: 5,
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade300,
-                    borderRadius: BorderRadius.circular(99),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 18),
-              const Text(
-                'Filter Buku',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w900,
-                  color: Color(0xFF1E293B),
-                ),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                'Pilih urutan katalog buku yang ingin ditampilkan.',
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500,
-                  color: Colors.grey.shade600,
-                ),
-              ),
-              const SizedBox(height: 18),
-
-              _buildFilterSheetItem(
-                label: 'Semua',
-                icon: Icons.grid_view_rounded,
-              ),
-              _buildFilterSheetItem(
-                label: 'Terbaru',
-                icon: Icons.new_releases_rounded,
-              ),
-              _buildFilterSheetItem(
-                label: 'Populer',
-                icon: Icons.local_fire_department_rounded,
-              ),
-            ],
-          ),
-        );
-      },
     );
   }
 
@@ -445,65 +455,6 @@ class _CatalogTabState extends State<CatalogTab> {
           ),
         );
       },
-    );
-  }
-
-  Widget _buildFilterSheetItem({
-    required String label,
-    required IconData icon,
-  }) {
-    final isSelected = _activeFilter == label;
-
-    return InkWell(
-      borderRadius: BorderRadius.circular(18),
-      onTap: () {
-        Navigator.pop(context);
-        _onFilterChanged(label);
-      },
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 10),
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: isSelected ? const Color(0xFFE8F1EC) : Colors.white,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(
-            color: isSelected ? const Color(0xFF2B5A41) : Colors.grey.shade200,
-          ),
-        ),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(9),
-              decoration: BoxDecoration(
-                color: isSelected
-                    ? const Color(0xFF2B5A41)
-                    : const Color(0xFFF4F7F5),
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: Icon(
-                icon,
-                size: 20,
-                color: isSelected ? Colors.white : const Color(0xFF2B5A41),
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                label,
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w800,
-                  color: isSelected
-                      ? const Color(0xFF2B5A41)
-                      : const Color(0xFF1E293B),
-                ),
-              ),
-            ),
-            if (isSelected)
-              const Icon(Icons.check_circle_rounded, color: Color(0xFF2B5A41)),
-          ],
-        ),
-      ),
     );
   }
 
@@ -915,29 +866,6 @@ class _CatalogTabState extends State<CatalogTab> {
     );
   }
 
-  Widget _buildFilterChip(String label) {
-    final isSelected = _activeFilter == label;
-    return Padding(
-      padding: const EdgeInsets.only(right: 8.0),
-      child: ChoiceChip(
-        label: Text(label),
-        selected: isSelected,
-        onSelected: (_) => _onFilterChanged(label),
-        selectedColor: const Color(0xFF2B5A41),
-        labelStyle: TextStyle(
-          color: isSelected ? Colors.white : const Color(0xFF1E293B),
-          fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
-        ),
-        backgroundColor: Colors.white,
-        side: BorderSide(
-          color: isSelected ? const Color(0xFF2B5A41) : Colors.grey.shade300,
-        ),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        elevation: isSelected ? 2 : 0,
-      ),
-    );
-  }
-
   Widget _buildPremiumBookCard(dynamic book, int index) {
     final titleStr = book['title']?.toString() ?? 'B';
     final initials = titleStr.length > 1
@@ -1304,50 +1232,66 @@ class _CatalogTabState extends State<CatalogTab> {
   Widget _buildPhysicalBookView() {
     return Column(
       children: [
-        // Floating Search & Filter Bar
         Padding(
           padding: const EdgeInsets.fromLTRB(20, 20, 20, 10),
           child: _buildSearchBarWithDropdown(),
         ),
         Expanded(
-          child: _isLoading
-              ? const Center(
-                  child: CircularProgressIndicator(color: Color(0xFF2B5A41)),
-                )
-              : _books.isEmpty
-              ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
+          child: RefreshIndicator(
+            onRefresh: () async => _fetchBooks(reset: true),
+            color: const Color(0xFF2B5A41),
+            child: _isLoading
+                ? const Center(
+                    child: CircularProgressIndicator(color: Color(0xFF2B5A41)),
+                  )
+                : _errorMessage != null && _books.isEmpty
+                ? ListView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    padding: const EdgeInsets.fromLTRB(24, 80, 24, 24),
                     children: [
-                      Icon(
-                        Icons.menu_book_rounded,
-                        size: 64,
-                        color: Colors.grey.shade300,
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        'Tidak ada buku ditemukan.',
-                        style: TextStyle(
-                          color: Colors.grey.shade500,
-                          fontWeight: FontWeight.w500,
-                        ),
+                      _buildStateCard(
+                        icon: Icons.wifi_off_rounded,
+                        title: 'Katalog belum bisa dimuat',
+                        message: _errorMessage!,
+                        buttonText: 'Coba Lagi',
+                        onPressed: () => _fetchBooks(reset: true),
                       ),
                     ],
-                  ),
-                )
-              : Stack(
-                  children: [
-                    RefreshIndicator(
-                      onRefresh: () async => _fetchBooks(reset: true),
-                      color: const Color(0xFF2B5A41),
-                      child: GridView.builder(
+                  )
+                : _books.isEmpty
+                ? ListView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    padding: const EdgeInsets.fromLTRB(24, 80, 24, 24),
+                    children: [
+                      _buildStateCard(
+                        icon: Icons.menu_book_rounded,
+                        title: 'Tidak ada buku ditemukan',
+                        message: _searchQuery.isNotEmpty
+                            ? 'Coba gunakan kata kunci lain atau hapus pencarian.'
+                            : 'Data buku belum tersedia saat ini.',
+                        buttonText: _searchQuery.isNotEmpty
+                            ? 'Hapus Pencarian'
+                            : null,
+                        onPressed: _searchQuery.isNotEmpty
+                            ? () {
+                                _searchCtrl.clear();
+                                _filterBooks('');
+                                setState(() {});
+                              }
+                            : null,
+                      ),
+                    ],
+                  )
+                : Stack(
+                    children: [
+                      GridView.builder(
                         controller: _scrollController,
                         physics: const AlwaysScrollableScrollPhysics(),
                         padding: EdgeInsets.only(
                           left: 20,
                           right: 20,
                           top: 10,
-                          bottom: _isLoadingMore ? 80 : 20,
+                          bottom: _isLoadingMore ? 90 : 24,
                         ),
                         gridDelegate:
                             const SliverGridDelegateWithFixedCrossAxisCount(
@@ -1362,41 +1306,116 @@ class _CatalogTabState extends State<CatalogTab> {
                           return _buildPremiumBookCard(book, index);
                         },
                       ),
-                    ),
-                    if (_isLoadingMore)
-                      Positioned(
-                        bottom: 16,
-                        left: 0,
-                        right: 0,
-                        child: Center(
-                          child: Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              shape: BoxShape.circle,
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black12,
-                                  blurRadius: 8,
-                                  offset: const Offset(0, 2),
+                      if (_isLoadingMore)
+                        Positioned(
+                          bottom: 16,
+                          left: 0,
+                          right: 0,
+                          child: Center(
+                            child: Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                shape: BoxShape.circle,
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withValues(alpha: 0.10),
+                                    blurRadius: 12,
+                                    offset: const Offset(0, 4),
+                                  ),
+                                ],
+                              ),
+                              child: const SizedBox(
+                                width: 24,
+                                height: 24,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2.5,
+                                  color: Color(0xFF2B5A41),
                                 ),
-                              ],
-                            ),
-                            child: const SizedBox(
-                              width: 24,
-                              height: 24,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2.5,
-                                color: Color(0xFF2B5A41),
                               ),
                             ),
                           ),
                         ),
-                      ),
-                  ],
-                ),
+                    ],
+                  ),
+          ),
         ),
       ],
+    );
+  }
+
+  Widget _buildStateCard({
+    required IconData icon,
+    required String title,
+    required String message,
+    String? buttonText,
+    VoidCallback? onPressed,
+  }) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(26),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF2B5A41).withValues(alpha: 0.08),
+            blurRadius: 22,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          Icon(
+            icon,
+            size: 58,
+            color: const Color(0xFF2B5A41).withValues(alpha: 0.35),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            title,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: Color(0xFF1E293B),
+              fontSize: 16,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            message,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: Colors.grey.shade600,
+              fontSize: 13,
+              height: 1.45,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          if (buttonText != null && onPressed != null) ...[
+            const SizedBox(height: 18),
+            SizedBox(
+              height: 44,
+              child: ElevatedButton(
+                onPressed: onPressed,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF2B5A41),
+                  foregroundColor: Colors.white,
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                ),
+                child: Text(
+                  buttonText,
+                  style: const TextStyle(fontWeight: FontWeight.w800),
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
     );
   }
 }

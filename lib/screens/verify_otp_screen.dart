@@ -324,90 +324,123 @@ class _VerifyOtpScreenState extends State<VerifyOtpScreen>
                       const SizedBox(height: 12),
 
                       // OTP Fields
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: List.generate(6, (i) {
-                          return SizedBox(
-                            width: 46,
-                            height: 56,
-                            child: TextField(
-                              controller: _otpCtrls[i],
-                              focusNode: _otpFocuses[i],
-                              keyboardType: TextInputType.number,
-                              textAlign: TextAlign.center,
-                              maxLength: 6,
-                              style: const TextStyle(
-                                fontSize: 22,
-                                fontWeight: FontWeight.w700,
-                                color: Color(0xFF1A1D1B),
-                              ),
-                              cursorColor: const Color(0xFF2B5A41),
-                              inputFormatters: [
-                                FilteringTextInputFormatter.digitsOnly,
-                              ],
-                              decoration: InputDecoration(
-                                counterText: '',
-                                filled: true,
-                                fillColor: _otpCtrls[i].text.isNotEmpty
-                                    ? const Color(0xFFE8F1EC)
-                                    : const Color(0xFFF1F4F2),
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                  borderSide: BorderSide.none,
+                      // OTP Fields
+                      LayoutBuilder(
+                        builder: (context, constraints) {
+                          const gap = 8.0;
+                          final boxWidth =
+                              ((constraints.maxWidth - (gap * 5)) / 6).clamp(
+                                38.0,
+                                48.0,
+                              );
+
+                          return Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: List.generate(6, (i) {
+                              return Padding(
+                                padding: EdgeInsets.only(
+                                  right: i == 5 ? 0 : gap,
                                 ),
-                                enabledBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                  borderSide: BorderSide(
-                                    color: _otpCtrls[i].text.isNotEmpty
-                                        ? const Color(0xFF2B5A41)
-                                        : const Color(0xFFE8ECE9),
-                                    width: 1,
+                                child: SizedBox(
+                                  width: boxWidth,
+                                  height: 56,
+                                  child: TextField(
+                                    controller: _otpCtrls[i],
+                                    focusNode: _otpFocuses[i],
+                                    keyboardType: TextInputType.number,
+                                    textAlign: TextAlign.center,
+                                    textAlignVertical: TextAlignVertical.center,
+                                    maxLength: 6,
+                                    cursorHeight: 24,
+                                    style: const TextStyle(
+                                      fontSize: 22,
+                                      height: 1,
+                                      fontWeight: FontWeight.w700,
+                                      color: Color(0xFF1A1D1B),
+                                    ),
+                                    cursorColor: const Color(0xFF2B5A41),
+                                    inputFormatters: [
+                                      FilteringTextInputFormatter.digitsOnly,
+                                    ],
+                                    decoration: InputDecoration(
+                                      counterText: '',
+                                      isDense: true,
+                                      contentPadding: EdgeInsets.zero,
+                                      filled: true,
+                                      fillColor: _otpCtrls[i].text.isNotEmpty
+                                          ? const Color(0xFFE8F1EC)
+                                          : const Color(0xFFF1F4F2),
+                                      border: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                        borderSide: BorderSide.none,
+                                      ),
+                                      enabledBorder: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                        borderSide: BorderSide(
+                                          color: _otpCtrls[i].text.isNotEmpty
+                                              ? const Color(0xFF2B5A41)
+                                              : const Color(0xFFE8ECE9),
+                                          width: 1,
+                                        ),
+                                      ),
+                                      focusedBorder: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                        borderSide: const BorderSide(
+                                          color: Color(0xFF2B5A41),
+                                          width: 2,
+                                        ),
+                                      ),
+                                    ),
+                                    onChanged: (value) {
+                                      // Handle paste OTP
+                                      if (value.length > 1) {
+                                        final digits = value.replaceAll(
+                                          RegExp(r'[^0-9]'),
+                                          '',
+                                        );
+
+                                        for (int j = 0; j < 6; j++) {
+                                          _otpCtrls[j].text = j < digits.length
+                                              ? digits[j]
+                                              : '';
+                                        }
+
+                                        final focusIdx = digits.length >= 6
+                                            ? 5
+                                            : digits.length;
+                                        if (focusIdx < 6) {
+                                          _otpFocuses[focusIdx].requestFocus();
+                                        }
+
+                                        setState(() => _generalError = null);
+
+                                        if (digits.length >= 6) {
+                                          FocusScope.of(context).unfocus();
+                                          _verifyOtp();
+                                        }
+
+                                        return;
+                                      }
+
+                                      setState(() => _generalError = null);
+
+                                      if (value.isNotEmpty && i < 5) {
+                                        _otpFocuses[i + 1].requestFocus();
+                                      } else if (value.isEmpty && i > 0) {
+                                        _otpFocuses[i - 1].requestFocus();
+                                      }
+
+                                      if (_otpCode.length == 6) {
+                                        FocusScope.of(context).unfocus();
+                                        _verifyOtp();
+                                      }
+                                    },
                                   ),
                                 ),
-                                focusedBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                  borderSide: const BorderSide(
-                                    color: Color(0xFF2B5A41),
-                                    width: 2,
-                                  ),
-                                ),
-                                contentPadding: const EdgeInsets.symmetric(
-                                  vertical: 16,
-                                ),
-                              ),
-                              onChanged: (value) {
-                                // Handle paste
-                                if (value.length > 1) {
-                                  final digits = value.replaceAll(
-                                    RegExp(r'[^0-9]'),
-                                    '',
-                                  );
-                                  for (int j = 0; j < 6; j++) {
-                                    _otpCtrls[j].text = j < digits.length
-                                        ? digits[j]
-                                        : '';
-                                  }
-                                  final focusIdx = digits.length >= 6
-                                      ? 5
-                                      : digits.length;
-                                  if (focusIdx < 6) {
-                                    _otpFocuses[focusIdx].requestFocus();
-                                  }
-                                  setState(() {});
-                                  if (digits.length >= 6) _verifyOtp();
-                                  return;
-                                }
-                                setState(() {});
-                                if (value.isNotEmpty && i < 5) {
-                                  _otpFocuses[i + 1].requestFocus();
-                                } else if (value.isEmpty && i > 0) {
-                                  _otpFocuses[i - 1].requestFocus();
-                                }
-                                if (_otpCode.length == 6) _verifyOtp();
-                              },
-                            ),
+                              );
+                            }),
                           );
-                        }),
+                        },
                       ),
                       const SizedBox(height: 32),
 

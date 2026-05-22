@@ -21,8 +21,10 @@ class ClaimVerifyOtpScreen extends StatefulWidget {
 
 class _ClaimVerifyOtpScreenState extends State<ClaimVerifyOtpScreen>
     with SingleTickerProviderStateMixin {
-  final List<TextEditingController> _otpCtrls =
-      List.generate(6, (_) => TextEditingController());
+  final List<TextEditingController> _otpCtrls = List.generate(
+    6,
+    (_) => TextEditingController(),
+  );
   final List<FocusNode> _otpFocuses = List.generate(6, (_) => FocusNode());
 
   bool _isLoading = false;
@@ -83,7 +85,9 @@ class _ClaimVerifyOtpScreenState extends State<ClaimVerifyOtpScreen>
           content: Text(res['data']['message'] ?? 'Akun berhasil diaktivasi'),
           backgroundColor: const Color(0xFF2B5A41),
           behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
         ),
       );
 
@@ -123,10 +127,14 @@ class _ClaimVerifyOtpScreenState extends State<ClaimVerifyOtpScreen>
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(res['data']['message'] ?? 'Kode OTP baru telah dikirim'),
+          content: Text(
+            res['data']['message'] ?? 'Kode OTP baru telah dikirim',
+          ),
           backgroundColor: const Color(0xFF2B5A41),
           behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
         ),
       );
     } else {
@@ -135,7 +143,9 @@ class _ClaimVerifyOtpScreenState extends State<ClaimVerifyOtpScreen>
           content: Text(res['data']['message'] ?? 'Gagal mengirim ulang OTP'),
           backgroundColor: Colors.red.shade400,
           behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
         ),
       );
     }
@@ -162,7 +172,10 @@ class _ClaimVerifyOtpScreenState extends State<ClaimVerifyOtpScreen>
               ),
               child: SafeArea(
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 10),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16.0,
+                    vertical: 10,
+                  ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -332,61 +345,112 @@ class _ClaimVerifyOtpScreenState extends State<ClaimVerifyOtpScreen>
                         const SizedBox(height: 20),
                       ],
 
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: List.generate(6, (index) {
-                          return SizedBox(
-                            width: 45,
-                            child: TextField(
-                              controller: _otpCtrls[index],
-                              focusNode: _otpFocuses[index],
-                              textAlign: TextAlign.center,
-                              keyboardType: TextInputType.number,
-                              maxLength: 1,
-                              inputFormatters: [
-                                FilteringTextInputFormatter.digitsOnly,
-                              ],
-                              style: const TextStyle(
-                                fontSize: 22,
-                                fontWeight: FontWeight.bold,
-                                color: Color(0xFF2B5A41),
-                              ),
-                              decoration: InputDecoration(
-                                counterText: '',
-                                filled: true,
-                                fillColor: const Color(0xFFF4F7F5),
-                                enabledBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                  borderSide: const BorderSide(
-                                    color: Color(0xFFCBEAD7),
+                      LayoutBuilder(
+                        builder: (context, constraints) {
+                          const gap = 8.0;
+                          final boxWidth =
+                              ((constraints.maxWidth - (gap * 5)) / 6).clamp(
+                                38.0,
+                                48.0,
+                              );
+
+                          return Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: List.generate(6, (index) {
+                              return Padding(
+                                padding: EdgeInsets.only(
+                                  right: index == 5 ? 0 : gap,
+                                ),
+                                child: SizedBox(
+                                  width: boxWidth,
+                                  height: 56,
+                                  child: TextField(
+                                    controller: _otpCtrls[index],
+                                    focusNode: _otpFocuses[index],
+                                    textAlign: TextAlign.center,
+                                    textAlignVertical: TextAlignVertical.center,
+                                    keyboardType: TextInputType.number,
+                                    maxLength: 6,
+                                    cursorHeight: 24,
+                                    inputFormatters: [
+                                      FilteringTextInputFormatter.digitsOnly,
+                                    ],
+                                    style: const TextStyle(
+                                      fontSize: 22,
+                                      height: 1,
+                                      fontWeight: FontWeight.bold,
+                                      color: Color(0xFF2B5A41),
+                                    ),
+                                    decoration: InputDecoration(
+                                      counterText: '',
+                                      isDense: true,
+                                      contentPadding: EdgeInsets.zero,
+                                      filled: true,
+                                      fillColor: const Color(0xFFF4F7F5),
+                                      enabledBorder: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(14),
+                                        borderSide: const BorderSide(
+                                          color: Color(0xFFCBEAD7),
+                                        ),
+                                      ),
+                                      focusedBorder: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(14),
+                                        borderSide: const BorderSide(
+                                          color: Color(0xFF2B5A41),
+                                          width: 2,
+                                        ),
+                                      ),
+                                    ),
+                                    onChanged: (value) {
+                                      // Handle paste OTP
+                                      if (value.length > 1) {
+                                        final digits = value.replaceAll(
+                                          RegExp(r'[^0-9]'),
+                                          '',
+                                        );
+
+                                        for (int j = 0; j < 6; j++) {
+                                          _otpCtrls[j].text = j < digits.length
+                                              ? digits[j]
+                                              : '';
+                                        }
+
+                                        final focusIdx = digits.length >= 6
+                                            ? 5
+                                            : digits.length;
+                                        if (focusIdx < 6) {
+                                          _otpFocuses[focusIdx].requestFocus();
+                                        }
+
+                                        setState(() => _generalError = null);
+
+                                        if (digits.length >= 6) {
+                                          FocusScope.of(context).unfocus();
+                                        }
+
+                                        return;
+                                      }
+
+                                      setState(() => _generalError = null);
+
+                                      if (value.isNotEmpty && index < 5) {
+                                        _otpFocuses[index + 1].requestFocus();
+                                      }
+
+                                      if (value.isEmpty && index > 0) {
+                                        _otpFocuses[index - 1].requestFocus();
+                                      }
+
+                                      if (_otpCode.length == 6) {
+                                        FocusScope.of(context).unfocus();
+                                      }
+                                    },
                                   ),
                                 ),
-                                focusedBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                  borderSide: const BorderSide(
-                                    color: Color(0xFF2B5A41),
-                                    width: 2,
-                                  ),
-                                ),
-                              ),
-                              onChanged: (value) {
-                                setState(() => _generalError = null);
-
-                                if (value.isNotEmpty && index < 5) {
-                                  _otpFocuses[index + 1].requestFocus();
-                                }
-
-                                if (value.isEmpty && index > 0) {
-                                  _otpFocuses[index - 1].requestFocus();
-                                }
-
-                                if (_otpCode.length == 6) {
-                                  FocusScope.of(context).unfocus();
-                                }
-                              },
-                            ),
+                              );
+                            }),
                           );
-                        }),
+                        },
                       ),
 
                       const SizedBox(height: 32),
@@ -442,7 +506,9 @@ class _ClaimVerifyOtpScreenState extends State<ClaimVerifyOtpScreen>
                               ),
                               children: [
                                 TextSpan(
-                                  text: _isResending ? 'Mengirim...' : 'Kirim Ulang',
+                                  text: _isResending
+                                      ? 'Mengirim...'
+                                      : 'Kirim Ulang',
                                   style: TextStyle(
                                     fontSize: 14,
                                     fontWeight: FontWeight.w700,
