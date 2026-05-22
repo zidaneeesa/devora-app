@@ -71,37 +71,6 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
     return text;
   }
 
-  int _asInt(dynamic value, {int fallback = 0}) {
-    if (value == null) return fallback;
-
-    if (value is int) return value;
-
-    if (value is double) return value.round();
-
-    final text = value.toString().trim();
-    if (text.isEmpty || text == 'null') return fallback;
-
-    return int.tryParse(text) ?? fallback;
-  }
-
-  int _getBestPageCount(Map<String, dynamic> source) {
-    final candidates = [
-      source['pages'],
-      source['page_count'],
-      source['pageCount'],
-      source['imagecount'],
-      source['total_page'],
-      source['total_pages'],
-    ];
-
-    for (final candidate in candidates) {
-      final value = _asInt(candidate);
-      if (value > 0) return value;
-    }
-
-    return 0;
-  }
-
   bool _isValidPdfUrl(dynamic value) {
     final url = _cleanUrl(value);
     if (url == null) return false;
@@ -196,6 +165,7 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
           'pageCount',
           'imagecount',
           'total_page',
+          'total_pages',
         ];
 
         for (final key in keys) {
@@ -228,7 +198,9 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
         setState(() {
           currentPage = newCurrentPage;
           totalPage = newTotalPage;
-          progress = newTotalPage == 0 ? 0 : newCurrentPage / newTotalPage;
+          progress = newTotalPage == 0
+              ? 0.0
+              : (newCurrentPage / newTotalPage).clamp(0.0, 1.0).toDouble();
         });
       }
     } catch (e) {
@@ -237,18 +209,140 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
   }
 
   Future<void> fetchBookDetail() async {
-    final res = await ApiService.getBookDetail(widget.book['id'].toString());
+    try {
+      final res = await ApiService.getBookDetail(widget.book['id'].toString());
 
-    if (res['status'] == 200) {
+      if (!mounted) return;
+
       setState(() {
-        detailBook = res['data'];
+        if (res['status'] == 200 && res['data'] != null) {
+          detailBook = Map<String, dynamic>.from(res['data']);
+        }
+        isLoadingDetail = false;
+      });
+    } catch (e) {
+      debugPrint('Gagal mengambil detail buku: $e');
+
+      if (!mounted) return;
+
+      setState(() {
         isLoadingDetail = false;
       });
     }
   }
 
+  void _showMessage(String message) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Future<void> _openEbookReader() async {
+    if (!widget.isEbook) return;
+
+    final id = widget.book['id']?.toString() ?? '';
+
+    if (id.isEmpty) {
+      _showMessage('Data ebook tidak valid');
+      return;
+    }
+
+    if (id.contains('http')) {
+      _showMessage('Ebook tidak bisa dibuka');
+      return;
+    }
+
+    if (id.toLowerCase().contains('mp3')) {
+      _showMessage('Ini file audio, bukan ebook');
+      return;
+    }
+
+    String? pdfUrl = _pickValidPdfUrlFrom(widget.book);
+    String? webReaderUrl = _pickWebReaderUrlFrom(widget.book);
+    Map<String, dynamic>? detail;
+
+    try {
+      final source = widget.book['source']?.toString() ?? 'internet_archive';
+
+      final res = await ApiService.getEbookDetail(id, source: source);
+
+      if (!mounted) return;
+
+      if (res['status'] == 200 && res['data'] != null) {
+        detail = Map<String, dynamic>.from(res['data']);
+
+        final detailPdf = _pickValidPdfUrlFrom(detail);
+        final detailWebReader = _pickWebReaderUrlFrom(detail);
+
+        if (detailPdf != null) {
+          pdfUrl = detailPdf;
+        }
+
+        if (detailWebReader != null) {
+          webReaderUrl = detailWebReader;
+        }
+      }
+    } catch (e) {
+      debugPrint('Gagal mengambil detail ebook: $e');
+    }
+
+    if (!mounted) return;
+
+    final int totalPages = _resolveTotalPages(detail);
+
+    debugPrint('VALID PDF URL: $pdfUrl');
+    debugPrint('WEB READER URL: $webReaderUrl');
+    debugPrint('TOTAL PAGES: $totalPages');
+
+    // Prioritas utama: Web Reader
+    final readerUrl = webReaderUrl;
+    if (readerUrl != null && readerUrl.isNotEmpty) {
+      await Navigator.of(context).push<bool>(
+        MaterialPageRoute(
+          builder: (_) => EbookWebReaderScreen(
+            url: readerUrl,
+            title: widget.book['title'] ?? '',
+            ebookId: id,
+            totalPages: totalPages,
+            pdfUrl: pdfUrl,
+          ),
+        ),
+      );
+
+      if (!mounted) return;
+
+      await fetchProgress();
+      return;
+    }
+
+    // Fallback: PDF Reader
+    final validPdfUrl = pdfUrl;
+    if (validPdfUrl != null && validPdfUrl.isNotEmpty) {
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => BookReaderScreen(
+            url: validPdfUrl,
+            title: widget.book['title'] ?? '',
+            ebookId: id,
+          ),
+        ),
+      );
+
+      if (!mounted) return;
+
+      await fetchProgress();
+      return;
+    }
+
+    _showMessage('Ebook belum tersedia untuk dibaca');
+  }
+
   @override
   Widget build(BuildContext context) {
+    final pageCount = _resolveTotalPages(detailBook);
+
     return Scaffold(
       backgroundColor: const Color(0xFFF7FAF8),
       extendBodyBehindAppBar: true,
@@ -279,7 +373,7 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
                   end: Alignment.bottomCenter,
                   colors: [
                     const Color(0xFFD6E3DB),
-                    const Color(0xFFF7FAF8).withOpacity(0.0),
+                    const Color(0xFFF7FAF8).withValues(alpha: 0.0),
                   ],
                 ),
               ),
@@ -312,7 +406,7 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
                             : null,
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withOpacity(0.15),
+                            color: Colors.black.withValues(alpha: 0.15),
                             blurRadius: 30,
                             offset: const Offset(0, 15),
                           ),
@@ -327,7 +421,7 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
                                   fontWeight: FontWeight.bold,
                                   color: const Color(
                                     0xFF2B5A41,
-                                  ).withOpacity(0.3),
+                                  ).withValues(alpha: 0.3),
                                 ),
                               ),
                             )
@@ -378,7 +472,7 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
                       ),
                       _buildStatPill(
                         Icons.library_books,
-                        widget.book['pages']?.toString() ?? '324',
+                        pageCount > 0 ? '$pageCount' : '-',
                         'HALAMAN',
                         Colors.black87,
                       ),
@@ -461,7 +555,7 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
                           borderRadius: BorderRadius.circular(18),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withOpacity(0.03),
+                              color: Colors.black.withValues(alpha: 0.03),
                               blurRadius: 10,
                               offset: const Offset(0, 4),
                             ),
@@ -535,7 +629,7 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.05),
+                    color: Colors.black.withValues(alpha: 0.05),
                     blurRadius: 20,
                     offset: const Offset(0, -10),
                   ),
@@ -594,147 +688,7 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
                           child: Padding(
                             padding: const EdgeInsets.only(left: 20.0),
                             child: ElevatedButton(
-                              onPressed: () async {
-                                if (!widget.isEbook) return;
-
-                                final id = widget.book['id']?.toString() ?? '';
-
-                                if (id.isEmpty) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text('Data ebook tidak valid'),
-                                    ),
-                                  );
-                                  return;
-                                }
-
-                                if (id.contains('http')) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text('Ebook tidak bisa dibuka'),
-                                    ),
-                                  );
-                                  return;
-                                }
-
-                                if (id.toLowerCase().contains('mp3')) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text(
-                                        'Ini file audio, bukan ebook',
-                                      ),
-                                    ),
-                                  );
-                                  return;
-                                }
-
-                                String? pdfUrl = _pickValidPdfUrlFrom(
-                                  widget.book,
-                                );
-                                String? webReaderUrl = _pickWebReaderUrlFrom(
-                                  widget.book,
-                                );
-                                Map<String, dynamic>? detail;
-
-                                try {
-                                  final source =
-                                      widget.book['source']?.toString() ??
-                                      'internet_archive';
-
-                                  final res = await ApiService.getEbookDetail(
-                                    id,
-                                    source: source,
-                                  );
-
-                                  if (res['status'] == 200 &&
-                                      res['data'] != null) {
-                                    detail = Map<String, dynamic>.from(
-                                      res['data'],
-                                    );
-
-                                    final detailPdf = _pickValidPdfUrlFrom(
-                                      detail,
-                                    );
-                                    final detailWebReader =
-                                        _pickWebReaderUrlFrom(detail);
-
-                                    if (detailPdf != null) {
-                                      pdfUrl = detailPdf;
-                                    }
-
-                                    if (detailWebReader != null) {
-                                      webReaderUrl = detailWebReader;
-                                    }
-                                  }
-                                } catch (e) {
-                                  debugPrint(
-                                    'Gagal mengambil detail ebook: $e',
-                                  );
-                                }
-
-                                final int totalPages = _resolveTotalPages(
-                                  detail,
-                                );
-
-                                debugPrint('VALID PDF URL: $pdfUrl');
-                                debugPrint('WEB READER URL: $webReaderUrl');
-                                debugPrint('TOTAL PAGES: $totalPages');
-
-                                // Prioritas utama: Web Reader
-                                if (webReaderUrl != null &&
-                                    webReaderUrl.isNotEmpty) {
-                                  final result = await Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (_) => EbookWebReaderScreen(
-                                        url: webReaderUrl!,
-                                        title: widget.book['title'] ?? '',
-                                        ebookId: id,
-                                        totalPages: totalPages,
-                                        pdfUrl: pdfUrl,
-                                      ),
-                                    ),
-                                  );
-
-                                  if (!mounted) return;
-
-                                  if (result == true) {
-                                    await fetchProgress();
-                                  } else {
-                                    await fetchProgress();
-                                  }
-
-                                  return;
-                                }
-
-                                // Fallback: PDF Reader
-                                if (pdfUrl != null && pdfUrl.isNotEmpty) {
-                                  await Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (_) => BookReaderScreen(
-                                        url: pdfUrl!,
-                                        title: widget.book['title'] ?? '',
-                                        ebookId: id,
-                                      ),
-                                    ),
-                                  );
-
-                                  if (!mounted) return;
-                                  await fetchProgress();
-                                  return;
-                                }
-
-                                if (!mounted) return;
-
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text(
-                                      'Ebook belum tersedia untuk dibaca',
-                                    ),
-                                  ),
-                                );
-                              },
+                              onPressed: _openEbookReader,
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: const Color(0xFF679B7B),
                                 shape: RoundedRectangleBorder(
@@ -780,7 +734,7 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
         borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.04),
+            color: Colors.black.withValues(alpha: 0.04),
             blurRadius: 10,
             offset: const Offset(0, 5),
           ),
