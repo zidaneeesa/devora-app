@@ -53,6 +53,20 @@ class _NotificationScreenState extends State<NotificationScreen> {
 
   NotifStyle _getStyle(String type) {
     switch (type) {
+      case 'peminjaman_berhasil':
+        return NotifStyle(
+          icon: Icons.menu_book_rounded,
+          color: const Color(0xFF1E40AF), // Blue
+          bgColor: const Color(0xFFDBEAFE),
+          label: 'Peminjaman',
+        );
+      case 'pengembalian_berhasil':
+        return NotifStyle(
+          icon: Icons.assignment_return_rounded,
+          color: const Color(0xFF059669), // Emerald
+          bgColor: const Color(0xFFD1FAE5),
+          label: 'Dikembalikan',
+        );
       case 'reminder_pengembalian':
         return NotifStyle(
           icon: Icons.schedule_rounded,
