@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../services/api_service.dart';
 import '../book_detail_screen.dart';
-import '../chatbot_screen.dart';
-import 'catalog_tab.dart';
 import '../../widgets/notification_bell.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
@@ -601,18 +599,7 @@ class _HomeTabState extends State<HomeTab> {
                                 ),
                               ),
                               InkWell(
-                                onTap: () {
-                                  if (widget.onSeeAllCatalog != null) {
-                                    widget.onSeeAllCatalog!();
-                                  } else {
-                                    Navigator.push(
-                                      context,
-                                      MaterialPageRoute(
-                                        builder: (_) => const CatalogTab(),
-                                      ),
-                                    );
-                                  }
-                                },
+                                onTap: widget.onSeeAllCatalog,
                                 borderRadius: BorderRadius.circular(8),
                                 child: Padding(
                                   padding: const EdgeInsets.symmetric(

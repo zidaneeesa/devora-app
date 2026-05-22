@@ -14,13 +14,24 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   int _currentIndex = 0;
+  late final List<Widget> _tabs;
 
-  final List<Widget> _tabs = const [
-    HomeTab(),
-    CatalogTab(),
-    LoansTab(),
-    ProfileTab(),
-  ];
+  @override
+  void initState() {
+    super.initState();
+    _tabs = [
+      HomeTab(onSeeAllCatalog: () => _changeTab(1)),
+      const CatalogTab(),
+      const LoansTab(),
+      const ProfileTab(),
+    ];
+  }
+
+  void _changeTab(int index) {
+    setState(() {
+      _currentIndex = index;
+    });
+  }
 
   void _openChatbot() {
     Navigator.push(
@@ -40,11 +51,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return Expanded(
       child: InkWell(
         borderRadius: BorderRadius.circular(20),
-        onTap: () {
-          setState(() {
-            _currentIndex = index;
-          });
-        },
+        onTap: () => _changeTab(index),
         child: SizedBox(
           height: 68,
           child: Column(
