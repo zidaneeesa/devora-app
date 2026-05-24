@@ -78,11 +78,8 @@ class _LoginScreenState extends State<LoginScreen>
     if (!mounted) return;
 
     if (hasToken) {
-      try {
-        await NotificationService.saveFcmToken();
-      } catch (_) {
-        // Token FCM tidak boleh membuat proses masuk otomatis gagal.
-      }
+      // Jalankan di background — tidak perlu ditunggu sebelum navigasi.
+      NotificationService.saveFcmToken().catchError((_) {});
 
       if (!mounted) return;
 
