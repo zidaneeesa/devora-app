@@ -343,7 +343,7 @@ class _VerifyOtpScreenState extends State<VerifyOtpScreen>
                                 ),
                                 child: SizedBox(
                                   width: boxWidth,
-                                  height: 56,
+                                  height: 72,
                                   child: TextField(
                                     controller: _otpCtrls[i],
                                     focusNode: _otpFocuses[i],
@@ -364,8 +364,7 @@ class _VerifyOtpScreenState extends State<VerifyOtpScreen>
                                     ],
                                     decoration: InputDecoration(
                                       counterText: '',
-                                      isDense: true,
-                                      contentPadding: EdgeInsets.zero,
+                                      contentPadding: const EdgeInsets.symmetric(vertical: 20),
                                       filled: true,
                                       fillColor: _otpCtrls[i].text.isNotEmpty
                                           ? const Color(0xFFE8F1EC)

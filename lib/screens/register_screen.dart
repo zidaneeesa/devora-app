@@ -17,15 +17,18 @@ class _RegisterScreenState extends State<RegisterScreen>
   final _emailCtrl = TextEditingController();
   final _phoneCtrl = TextEditingController();
   final _passwordCtrl = TextEditingController();
+  final _confirmPasswordCtrl = TextEditingController();
 
   bool _isLoading = false;
   bool _obscurePassword = true;
+  bool _obscureConfirmPassword = true;
 
   // Error states
   String? _nameError;
   String? _emailError;
   String? _phoneError;
   String? _passwordError;
+  String? _confirmPasswordError;
   String? _generalError;
 
   // Shake animation
@@ -47,6 +50,7 @@ class _RegisterScreenState extends State<RegisterScreen>
     _emailCtrl.dispose();
     _phoneCtrl.dispose();
     _passwordCtrl.dispose();
+    _confirmPasswordCtrl.dispose();
     super.dispose();
   }
 
@@ -55,12 +59,14 @@ class _RegisterScreenState extends State<RegisterScreen>
         _emailError != null ||
         _phoneError != null ||
         _passwordError != null ||
+        _confirmPasswordError != null ||
         _generalError != null) {
       setState(() {
         _nameError = null;
         _emailError = null;
         _phoneError = null;
         _passwordError = null;
+        _confirmPasswordError = null;
         _generalError = null;
       });
     }
@@ -97,6 +103,14 @@ class _RegisterScreenState extends State<RegisterScreen>
         valid = false;
       } else if (_passwordCtrl.text.length < 6) {
         _passwordError = 'Minimal 6 karakter';
+        valid = false;
+      }
+
+      if (_confirmPasswordCtrl.text.isEmpty) {
+        _confirmPasswordError = 'Konfirmasi kata sandi diperlukan';
+        valid = false;
+      } else if (_confirmPasswordCtrl.text != _passwordCtrl.text) {
+        _confirmPasswordError = 'Kata sandi tidak cocok';
         valid = false;
       }
     });
@@ -172,6 +186,10 @@ class _RegisterScreenState extends State<RegisterScreen>
 
           if (errors.containsKey('password')) {
             _passwordError = errors['password'][0];
+          }
+
+          if (errors.containsKey('password_confirmation')) {
+            _confirmPasswordError = errors['password_confirmation'][0];
           }
         });
       } else {
@@ -392,6 +410,39 @@ class _RegisterScreenState extends State<RegisterScreen>
                               ),
                               onPressed: () => setState(
                                 () => _obscurePassword = !_obscurePassword,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+
+                          const Text(
+                            'Konfirmasi Kata Sandi',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              color: Color(0xFF333333),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          CustomTextField(
+                            label: '',
+                            hint: 'Ulangi kata sandi Anda',
+                            controller: _confirmPasswordCtrl,
+                            prefixIcon: Icons.lock_person_outlined,
+                            obscureText: _obscureConfirmPassword,
+                            errorText: _confirmPasswordError,
+                            onChanged: _clearErrors,
+                            suffixIcon: IconButton(
+                              icon: Icon(
+                                _obscureConfirmPassword
+                                    ? Icons.visibility_off_outlined
+                                    : Icons.visibility_outlined,
+                                color: Colors.grey.shade400,
+                                size: 22,
+                              ),
+                              onPressed: () => setState(
+                                () => _obscureConfirmPassword =
+                                    !_obscureConfirmPassword,
                               ),
                             ),
                           ),

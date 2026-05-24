@@ -601,10 +601,10 @@ class _RegisterVerifyOtpScreenState extends State<RegisterVerifyOtpScreen>
   Widget _buildOtpFields() {
     return LayoutBuilder(
       builder: (context, constraints) {
-        const gap = 8.0;
+        const gap = 10.0;
         final boxWidth = ((constraints.maxWidth - (gap * 5)) / 6).clamp(
-          38.0,
-          50.0,
+          48.0,
+          62.0,
         );
 
         return Row(
@@ -616,7 +616,7 @@ class _RegisterVerifyOtpScreenState extends State<RegisterVerifyOtpScreen>
               padding: EdgeInsets.only(right: index == 5 ? 0 : gap),
               child: SizedBox(
                 width: boxWidth,
-                height: 58,
+                height: 80,
                 child: TextField(
                   controller: _otpCtrls[index],
                   focusNode: _otpFocuses[index],
@@ -642,8 +642,7 @@ class _RegisterVerifyOtpScreenState extends State<RegisterVerifyOtpScreen>
                   ),
                   decoration: InputDecoration(
                     counterText: '',
-                    isDense: true,
-                    contentPadding: EdgeInsets.zero,
+                    contentPadding: const EdgeInsets.symmetric(vertical: 20),
                     filled: true,
                     fillColor: hasValue ? _accent : _inputBg,
                     enabledBorder: OutlineInputBorder(
