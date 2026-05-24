@@ -7,10 +7,12 @@ import 'api_config.dart';
 class ApiService {
   // Hanya membaca dari file .env. URL gagal dimuat jika terjadi masalah dengan file .env
   static String get baseUrl => ApiConfig.baseUrl;
+  static const String _authTokenKey = 'auth_token';
+  static String? _sessionToken;
 
   static Future<Map<String, String>> _getHeaders() async {
     final prefs = await SharedPreferences.getInstance();
-    final token = prefs.getString('auth_token');
+    final token = _sessionToken ?? prefs.getString(_authTokenKey);
     return {
       'Content-Type': 'application/json',
       'Accept': 'application/json',
@@ -18,19 +20,49 @@ class ApiService {
     };
   }
 
-  static Future<void> _saveToken(Map<String, dynamic> responseData) async {
-    if (responseData.containsKey('access_token')) {
+  static Future<void> _saveToken(
+    Map<String, dynamic> responseData, {
+    bool keepSignedIn = true,
+  }) async {
+    final token = responseData['access_token']?.toString();
+
+    if (token != null && token.isNotEmpty) {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('auth_token', responseData['access_token']);
+      _sessionToken = token;
+
+      if (keepSignedIn) {
+        await prefs.setString(_authTokenKey, token);
+      } else {
+        // Mode sekali login: token hanya hidup selama app masih berjalan.
+        // Setelah task/app ditutup total, user akan diminta login ulang.
+        await prefs.remove(_authTokenKey);
+      }
     }
+  }
+
+  static Future<String?> getSavedToken() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_authTokenKey);
+  }
+
+  static Future<bool> hasSavedToken() async {
+    final token = await getSavedToken();
+    return token != null && token.isNotEmpty;
+  }
+
+  static Future<void> clearSavedToken() async {
+    final prefs = await SharedPreferences.getInstance();
+    _sessionToken = null;
+    await prefs.remove(_authTokenKey);
   }
 
   // --- AUTH --- //
 
   static Future<Map<String, dynamic>> login(
     String email,
-    String password,
-  ) async {
+    String password, {
+    bool keepSignedIn = true,
+  }) async {
     final response = await http.post(
       Uri.parse('$baseUrl/auth/login'),
       headers: await _getHeaders(),
@@ -39,7 +71,7 @@ class ApiService {
 
     final data = jsonDecode(response.body);
     if (response.statusCode == 200) {
-      await _saveToken(data);
+      await _saveToken(data, keepSignedIn: keepSignedIn);
     }
     return {'status': response.statusCode, 'data': data};
   }
@@ -70,12 +102,16 @@ class ApiService {
   }
 
   static Future<void> logout() async {
-    await http.post(
-      Uri.parse('$baseUrl/auth/logout'),
-      headers: await _getHeaders(),
-    );
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('auth_token');
+    try {
+      await http.post(
+        Uri.parse('$baseUrl/auth/logout'),
+        headers: await _getHeaders(),
+      );
+    } catch (_) {
+      // Tetap hapus token lokal walaupun server sedang tidak bisa dihubungi.
+    }
+
+    await clearSavedToken();
   }
 
   static Future<Map<String, dynamic>> registerSendOtp({
@@ -110,7 +146,13 @@ class ApiService {
       body: jsonEncode({'email': email, 'phone': phone, 'otp': otp}),
     );
 
-    return {'status': response.statusCode, 'data': jsonDecode(response.body)};
+    final data = jsonDecode(response.body);
+
+    if (response.statusCode == 201 || response.statusCode == 200) {
+      await _saveToken(data);
+    }
+
+    return {'status': response.statusCode, 'data': data};
   }
 
   // --- MEMBER PROFILE --- //

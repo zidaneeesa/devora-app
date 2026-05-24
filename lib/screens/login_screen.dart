@@ -23,6 +23,8 @@ class _LoginScreenState extends State<LoginScreen>
   final _passwordCtrl = TextEditingController();
   bool _isLoading = false;
   bool _obscurePassword = true;
+  bool _checkingSavedLogin = true;
+  bool _keepSignedIn = true;
 
   // Error states
   String? _emailError;
@@ -45,6 +47,8 @@ class _LoginScreenState extends State<LoginScreen>
     );
 
     if (widget.showLogoutSuccess) {
+      _checkingSavedLogin = false;
+
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
 
@@ -61,7 +65,35 @@ class _LoginScreenState extends State<LoginScreen>
           ),
         );
       });
+    } else {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _checkSavedLogin();
+      });
     }
+  }
+
+  Future<void> _checkSavedLogin() async {
+    final hasToken = await ApiService.hasSavedToken();
+
+    if (!mounted) return;
+
+    if (hasToken) {
+      try {
+        await NotificationService.saveFcmToken();
+      } catch (_) {
+        // Token FCM tidak boleh membuat proses masuk otomatis gagal.
+      }
+
+      if (!mounted) return;
+
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => const HomeScreen()),
+      );
+      return;
+    }
+
+    setState(() => _checkingSavedLogin = false);
   }
 
   @override
@@ -120,7 +152,11 @@ class _LoginScreenState extends State<LoginScreen>
     setState(() => _isLoading = true);
 
     try {
-      final res = await ApiService.login(email, password);
+      final res = await ApiService.login(
+        email,
+        password,
+        keepSignedIn: _keepSignedIn,
+      );
 
       if (!mounted) return;
 
@@ -129,7 +165,7 @@ class _LoginScreenState extends State<LoginScreen>
       if (res['status'] == 200) {
         // Registrasi FCM token ke backend setelah berhasil login
         await NotificationService.saveFcmToken();
-        
+
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(builder: (_) => const HomeScreen()),
@@ -406,6 +442,15 @@ class _LoginScreenState extends State<LoginScreen>
   Widget build(BuildContext context) {
     final size = MediaQuery.of(context).size;
 
+    if (_checkingSavedLogin) {
+      return const Scaffold(
+        backgroundColor: Color(0xFFF4F7F5),
+        body: Center(
+          child: CircularProgressIndicator(color: Color(0xFF2B5A41)),
+        ),
+      );
+    }
+
     return Scaffold(
       backgroundColor: const Color(0xFFF4F7F5),
       body: SingleChildScrollView(
@@ -630,7 +675,73 @@ class _LoginScreenState extends State<LoginScreen>
                               ),
                             ),
                           ),
-                          const SizedBox(height: 32),
+                          const SizedBox(height: 14),
+                          InkWell(
+                            borderRadius: BorderRadius.circular(12),
+                            onTap: _isLoading
+                                ? null
+                                : () => setState(
+                                    () => _keepSignedIn = !_keepSignedIn,
+                                  ),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 4),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.center,
+                                children: [
+                                  SizedBox(
+                                    height: 24,
+                                    width: 24,
+                                    child: Checkbox(
+                                      value: _keepSignedIn,
+                                      activeColor: const Color(0xFF2B5A41),
+                                      materialTapTargetSize:
+                                          MaterialTapTargetSize.shrinkWrap,
+                                      side: BorderSide(
+                                        color: Colors.grey.shade400,
+                                        width: 1.5,
+                                      ),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(5),
+                                      ),
+                                      onChanged: _isLoading
+                                          ? null
+                                          : (value) => setState(
+                                              () =>
+                                                  _keepSignedIn = value ?? true,
+                                            ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  const Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          'Keep me signed in',
+                                          style: TextStyle(
+                                            fontSize: 13.5,
+                                            fontWeight: FontWeight.w700,
+                                            color: Color(0xFF333333),
+                                          ),
+                                        ),
+                                        SizedBox(height: 2),
+                                        Text(
+                                          'Tetap login walaupun aplikasi ditutup dari recent apps.',
+                                          style: TextStyle(
+                                            fontSize: 11.5,
+                                            color: Color(0xFF7A7A7A),
+                                            height: 1.25,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 24),
 
                           // Login Button
                           ElevatedButton(
