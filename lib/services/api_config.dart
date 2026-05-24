@@ -3,7 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 class ApiConfig {
   static final Map<String, String> environments = {
-    'Production': 'https://devora.id/api/v1',
+    'Production': 'http://103.157.27.213/api/v1',
     'Staging': 'https://staging.devora.id/api/v1',
     'Custom': '',
   };
