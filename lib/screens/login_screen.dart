@@ -6,6 +6,7 @@ import 'home_screen.dart';
 import 'register_screen.dart';
 import 'claim_lookup_screen.dart';
 import 'forgot_password_screen.dart';
+import '../services/notification_service.dart';
 
 class LoginScreen extends StatefulWidget {
   final bool showLogoutSuccess;
@@ -126,6 +127,9 @@ class _LoginScreenState extends State<LoginScreen>
       setState(() => _isLoading = false);
 
       if (res['status'] == 200) {
+        // Registrasi FCM token ke backend setelah berhasil login
+        await NotificationService.saveFcmToken();
+        
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(builder: (_) => const HomeScreen()),
