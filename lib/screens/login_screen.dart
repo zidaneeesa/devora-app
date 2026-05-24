@@ -160,8 +160,8 @@ class _LoginScreenState extends State<LoginScreen>
       setState(() => _isLoading = false);
 
       if (res['status'] == 200) {
-        // Registrasi FCM token ke backend setelah berhasil login
-        await NotificationService.saveFcmToken();
+        // Jalankan di background — tidak perlu ditunggu sebelum navigasi.
+        NotificationService.saveFcmToken().catchError((_) {});
 
         Navigator.pushReplacement(
           context,
