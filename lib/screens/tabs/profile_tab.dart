@@ -584,11 +584,27 @@ class _ProfileTabState extends State<ProfileTab> {
   String _getMemberNik() {
     final member = _user?['member'];
 
-    if (member is Map && member['nik'] != null) {
-      return member['nik'].toString();
+    if (member is Map) {
+      final nik = member['nik']?.toString() ?? '';
+      if (nik.isNotEmpty && nik != 'null') {
+        return nik;
+      }
+      final memberCode = member['member_code']?.toString() ?? '';
+      if (memberCode.isNotEmpty && memberCode != 'null') {
+        return memberCode;
+      }
+      final nisNip = member['nis_nip']?.toString() ?? '';
+      if (nisNip.isNotEmpty && nisNip != 'null') {
+        return nisNip;
+      }
     }
 
-    return _user?['nik']?.toString() ?? '';
+    final userNik = _user?['nik']?.toString() ?? '';
+    if (userNik.isNotEmpty && userNik != 'null') {
+      return userNik;
+    }
+
+    return '';
   }
 
   Future<void> _loadBookCollections() async {

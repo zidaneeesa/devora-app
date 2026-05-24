@@ -733,20 +733,32 @@ class _CatalogTabState extends State<CatalogTab> {
         prefs.getString('NIK') ??
         '';
 
-    if (_nik.isEmpty) {
+    if (_nik.isEmpty || _nik == 'null') {
       final profileRes = await ApiService.getProfile();
 
       if (profileRes['status'] == 200) {
         final user = profileRes['data']?['user'];
         final member = user is Map ? user['member'] : null;
 
-        _nik = member is Map
-            ? (member['nik']?.toString() ?? '')
-            : (user is Map ? user['nik']?.toString() ?? '' : '');
+        if (member is Map) {
+          final nik = member['nik']?.toString() ?? '';
+          if (nik.isNotEmpty && nik != 'null') {
+            _nik = nik;
+          } else {
+            final memberCode = member['member_code']?.toString() ?? '';
+            if (memberCode.isNotEmpty && memberCode != 'null') {
+              _nik = memberCode;
+            } else {
+              _nik = member['nis_nip']?.toString() ?? '';
+            }
+          }
+        } else if (user is Map) {
+          _nik = user['nik']?.toString() ?? '';
+        }
       }
     }
 
-    if (_nik.isEmpty) return;
+    if (_nik.isEmpty || _nik == 'null') return;
 
     await _loadSavedBookIds();
   }
