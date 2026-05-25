@@ -68,13 +68,10 @@ class _SplashScreenState extends State<SplashScreen>
   }
 
   Future<void> _startAnimation() async {
-    await _logoController.forward();
-    await Future.delayed(const Duration(milliseconds: 150));
+    _logoController.forward();
+    _devoraController.forward();
 
-    // Animasi DEVORA ala opening Netflix
-    await _devoraController.forward();
-
-    await Future.delayed(const Duration(milliseconds: 100));
+    await Future.delayed(const Duration(milliseconds: 1000));
     await _subtitleController.forward();
   }
 
