@@ -50,6 +50,9 @@ class _DevoraAppState extends State<DevoraApp> {
         _isLoading = false;
       });
     } catch (e) {
+      // Tetap tunggu agar splash screen tidak hilang secara instan jika error
+      await Future.delayed(const Duration(seconds: 3));
+
       if (!mounted) return;
 
       setState(() {
