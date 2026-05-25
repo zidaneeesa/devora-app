@@ -24,7 +24,7 @@ class _LoginScreenState extends State<LoginScreen>
   bool _isLoading = false;
   bool _obscurePassword = true;
   bool _checkingSavedLogin = true;
-  bool _keepSignedIn = true;
+  bool _keepSignedIn = false;
 
   // Error states
   String? _emailError;
@@ -703,8 +703,8 @@ class _LoginScreenState extends State<LoginScreen>
                                       onChanged: _isLoading
                                           ? null
                                           : (value) => setState(
-                                              () =>
-                                                  _keepSignedIn = value ?? true,
+                                              () => _keepSignedIn =
+                                                  value ?? false,
                                             ),
                                     ),
                                   ),
