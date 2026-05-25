@@ -91,6 +91,8 @@ class _ChatbotScreenState extends State<ChatbotScreen>
     final text = _messageController.text.trim();
     if (text.isEmpty || _isSending) return;
 
+    setState(() => _isSending = true); // ← FIX: aktifkan loading indicator
+
     if (_currentConversationId == null) {
       final res = await ApiService.createConversation();
       if (res['status'] == 201) {
@@ -100,9 +102,7 @@ class _ChatbotScreenState extends State<ChatbotScreen>
           _currentTitle = conv['title'];
         });
       } else {
-        setState(() {
-          _isSending = false;
-        });
+        setState(() => _isSending = false);
         return;
       }
     }
@@ -133,10 +133,16 @@ class _ChatbotScreenState extends State<ChatbotScreen>
       _scrollToBottom();
       _loadConversations(); // refresh sidebar
     } else if (mounted) {
+      // Tampilkan pesan error yang lebih spesifik
+      final errMsg = res['status'] == 503
+          ? (res['data']?['message'] ?? 'Layanan AI sedang tidak tersedia. Coba lagi nanti.')
+          : res['status'] == 500
+          ? 'Koneksi ke server gagal atau timeout. Periksa jaringan kamu.'
+          : 'Maaf, terjadi kesalahan. Silakan coba lagi.';
       setState(() {
         _messages.add({
           'role': 'assistant',
-          'message': 'Maaf, terjadi kesalahan. Silakan coba lagi.',
+          'message': errMsg,
           'created_at': DateTime.now().toIso8601String(),
         });
         _isSending = false;

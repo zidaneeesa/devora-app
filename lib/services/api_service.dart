@@ -627,12 +627,24 @@ class ApiService {
     int conversationId,
     String message,
   ) async {
-    final response = await http.post(
-      Uri.parse('$baseUrl/chatbot/send'),
-      headers: await _getHeaders(),
-      body: jsonEncode({'conversation_id': conversationId, 'message': message}),
-    );
-    return {'status': response.statusCode, 'data': jsonDecode(response.body)};
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/chatbot/send'),
+            headers: await _getHeaders(),
+            body: jsonEncode({
+              'conversation_id': conversationId,
+              'message': message,
+            }),
+          )
+          .timeout(const Duration(seconds: 60)); // Gemini bisa lambat
+      return {'status': response.statusCode, 'data': jsonDecode(response.body)};
+    } catch (e) {
+      return {
+        'status': 500,
+        'data': {'error': 'Timeout atau koneksi gagal: $e'},
+      };
+    }
   }
 
   static Future<Map<String, dynamic>> getReadingProgress(String ebookId) async {
